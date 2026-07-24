@@ -20,10 +20,10 @@ process CIRCRNA_FINALIZE {
 
     script:
     def prefix   = task.ext.prefix ?: "${meta.id}_${meta.category}"
-    def iso_arg  = iso_expr.name  != 'NO_FILE' ? "--iso_expr    ${iso_expr}"   : ''
-    def ciri_arg = ciri_expr.name != 'NO_FILE' ? "--ciri_expr   ${ciri_expr}"  : ''
-    def fl_arg   = fl_expr.name   != 'NO_FILE' ? "--circfl_expr ${fl_expr}"    : ''
-    def nick_arg = nick_expr.name != 'NO_FILE' ? "--nick_expr   ${nick_expr}"  : ''
+    def iso_arg  = iso_expr.name  != 'NO_FILE_ISOCIRC'  ? "--iso_expr    ${iso_expr}"   : ''
+    def ciri_arg = ciri_expr.name != 'NO_FILE_CIRILONG' ? "--ciri_expr   ${ciri_expr}"  : ''
+    def fl_arg   = fl_expr.name   != 'NO_FILE_CIRCFL'   ? "--circfl_expr ${fl_expr}"    : ''
+    def nick_arg = nick_expr.name != 'NO_FILE_CIRCNICK' ? "--nick_expr   ${nick_expr}"  : ''
     """
     circrna_clean.py \\
         --annotated_tsv ${annotated_tsv} \\

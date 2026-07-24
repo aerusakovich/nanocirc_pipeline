@@ -30,16 +30,6 @@ def parse_args(args=None):
     return parser.parse_args(args)
 
 
-def print_error(error, context="Line", context_str=""):
-    error_str = "ERROR: Please check input files -> {}".format(error)
-    if context != "" and context_str != "":
-        error_str = "ERROR: Please check input files -> {}\n{}: '{}'".format(
-            error, context, context_str
-        )
-    print(error_str)
-    sys.exit(1)
-
-
 def main():
     args = parse_args()
 
@@ -71,7 +61,7 @@ def main():
             key     = "{}_INTRON_{}".format(circ_id, lineno)
 
             if key not in lifted:
-                sys.stderr.write("WARNING: intron {} not lifted — skipping\n".format(key))
+                sys.stderr.write("WARNING: intron {} not lifted, skipping\n".format(key))
                 skipped += 1
                 continue
 

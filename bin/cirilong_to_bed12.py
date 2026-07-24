@@ -76,7 +76,7 @@ def isoform_to_blocks(isoform_str, chrom_start):
     for exon in exons:
         parts = exon.split("-")
         if len(parts) != 2:
-            print(f"WARNING: unexpected exon format '{exon}' — skipping exon")
+            print(f"WARNING: unexpected exon format '{exon}', skipping exon")
             continue
         exon_start = int(parts[0]) - 1   # 1-based → 0-based
         exon_end   = int(parts[1])        # end stays the same
@@ -113,7 +113,7 @@ def convert(info_file, out_file):
 
             cols = line.split("\t")
             if len(cols) < 9:
-                print(f"WARNING line {lineno}: expected 9 columns, got {len(cols)} — skipping")
+                print(f"WARNING line {lineno}: expected 9 columns, got {len(cols)}, skipping")
                 skipped += 1
                 continue
 
@@ -126,7 +126,7 @@ def convert(info_file, out_file):
 
             isoform_field = attrs.get("isoform")
             if not isoform_field:
-                print(f"WARNING line {lineno}: no isoform attribute — skipping")
+                print(f"WARNING line {lineno}: no isoform attribute, skipping")
                 skipped += 1
                 continue
 
@@ -144,7 +144,7 @@ def convert(info_file, out_file):
 
                 result = isoform_to_blocks(isoform, chrom_start)
                 if result is None:
-                    print(f"WARNING line {lineno} iso{iso_idx + 1}: could not parse isoform '{isoform}' — skipping")
+                    print(f"WARNING line {lineno} iso{iso_idx + 1}: could not parse isoform '{isoform}', skipping")
                     skipped += 1
                     continue
 

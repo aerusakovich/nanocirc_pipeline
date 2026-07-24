@@ -30,9 +30,10 @@ The pipeline runs the following steps:
    - [`circnick-lrs`](https://github.com/dzhang32/circnick)
 3. **BED12 conversion** - all tool outputs converted to a unified 12-column BED format
 4. **Pairwise comparison** - [`bedtools intersect`](https://bedtools.readthedocs.io/) across all tool pairs with --split for exon boundaries meeting user defined reciprocal overlap fraction (default 0.95)
-5. **Hybrid smart merge** — BSJ majority vote across all tools + absolute-coordinate structure vote among exact-BSJ tools; produces three confidence-filtered outputs (discovery, balanced, high_confidence)
+5. **Hybrid smart merge** - BSJ majority vote across all tools, plus an absolute-coordinate structure vote among exact-BSJ tools; produces four confidence-filtered outputs (discovery, balanced_precision, balanced_recall, high_confidence). Optionally also merges across sequencing runs (`--run_crossrun_merge`, see below)
 6. **Confidence scoring** - each circRNA scored on two independent axes: BSJ consensus and isoform structure consensus (each Low/Medium/High)
-7. **MultiQC** - [`MultiQC`](https://multiqc.info/) aggregated QC report
+7. **Quantification** (optional, `--run_quantify`) - remap-based read counting against a discovery catalog: chunked remap-and-classify, overlap-cluster rescue, and targeted/gene-family rescue for hard-to-place loci. The `discovery`/`balanced_recall` tiers then get a post-quantification confidence filter that drops low-read, weakly-supported loci
+8. **MultiQC** - [`MultiQC`](https://multiqc.info/) aggregated QC report
 
 ## Quick start
 
@@ -71,19 +72,23 @@ For full parameter documentation see [docs/usage.md](docs/usage.md) or the [nf-c
 
 | Parameter                   | Description                                               | Default |
 | --------------------------- | --------------------------------------------------------- | ------- |
-| `--input`                   | Path to samplesheet CSV                                   | —       |
-| `--fasta`                   | Reference genome FASTA                                    | —       |
-| `--gtf`                     | Gene annotation GTF                                       | —       |
-| `--circrna_db`              | circRNA database BED (required for isoCirc and CIRI-long) | —       |
+| `--input`                   | Path to samplesheet CSV                                   | N/A     |
+| `--fasta`                   | Reference genome FASTA                                    | N/A     |
+| `--gtf`                     | Gene annotation GTF                                       | N/A     |
+| `--circrna_db`              | circRNA database BED (required for isoCirc and CIRI-long) | N/A     |
 | `--run_isocirc`             | Enable isoCirc                                            | `true`  |
 | `--run_circfl`              | Enable CircFL-seq                                         | `true`  |
 | `--run_cirilong`            | Enable CIRI-long                                          | `true`  |
 | `--run_circnick`            | Enable circnick-lrs                                       | `true`  |
-| `--circnick_species`        | Species for circnick-lrs: `mouse` or `human`              | —       |
-| `--circnick_liftover_chain` | UCSC chain file for coordinate liftover (optional, but required if provided version of genome differs from h19 or m38. otherwise circNICK-lrs results will be incomparable with other tools)        | —       |
+| `--circnick_species`        | Species for circnick-lrs: `mouse` or `human`              | N/A     |
+| `--circnick_liftover_chain` | UCSC chain file for coordinate liftover (optional, but required if provided version of genome differs from h19 or m38, otherwise circNICK-lrs results will be incomparable with other tools) | N/A |
 | `--circrna_bsj_tolerance`   | BSJ coordinate tolerance for relaxed merge (bp)           | `5`     |
 | `--circrna_isoform_overlap` | Min reciprocal spliced-length overlap for isoform scoring | `0.95`  |
 | `--run_benchmark_modes`     | Also publish raw smart-merge variants and all filtered combinations | `false` |
+| `--run_crossrun_merge`      | Merge circRNA calls across samples sharing a `group`      | `false` |
+| `--circrna_crossrun_min_corroboration` | Min tool agreement to keep a single-run isoform structure in cross-run merge | `2` |
+| `--run_quantify`            | Enable remap-based circRNA quantification                 | `false` |
+| `--circrna_confident_min_reads` | Max quantified read count for the discovery/balanced_recall confidence filter | `2` |
 
 ## Output
 
@@ -97,12 +102,11 @@ circrna/
     ├── circfl_seq/                     # CircFL-seq raw output
     ├── ciri_long/                      # CIRI-long raw output
     ├── circnick_lrs/                   # circnick-lrs raw output
-    └── merged/
-        ├── pairs/                      # Pairwise bedtools comparisons
-        └── smart/                      # Hybrid smart-merge outputs
-            ├── <sample>_discovery.*    # All merged circRNAs (max recall)
-            ├── <sample>_balanced.*     # Low-confidence entries removed (best F1)
-            └── <sample>_high_confidence.*  # High/High on both axes only (best precision)
+    └── merged/                         # Hybrid smart-merge outputs
+        ├── <sample>_discovery.*         # All merged circRNAs (max recall)
+        ├── <sample>_balanced_precision.* # Low-confidence entries removed (best F1)
+        ├── <sample>_balanced_recall.*   # consensus algorithm, trusted_only filter (recall-leaning)
+        └── <sample>_high_confidence.*   # High/High on both axes only (best precision)
 ```
 
 Each output consists of a BED12 file and a confidence TSV. The confidence TSV includes per-tool flags, isoform overlap fractions, and two independent consensus labels: `bsj_consensus` and `isoform_consensus` (each Low / Medium / High).
@@ -113,20 +117,29 @@ For full output documentation see [docs/output.md](docs/output.md).
 
 Each merged circRNA is scored on two **independent** axes:
 
-- **`bsj_consensus`** (`Low`/`Medium`/`High`) — fraction of active tools detecting this BSJ
-- **`isoform_consensus`** (`Low`/`Medium`/`High`) — fraction of active tools confirming this exon structure
+- **`bsj_consensus`** (`Low`/`Medium`/`High`): fraction of active tools detecting this BSJ
+- **`isoform_consensus`** (`Low`/`Medium`/`High`): fraction of active tools confirming this exon structure
 
 Both are binned from the percentage of active tools (≤25% → Low, ≤75% → Medium, >75% → High). The two axes are independent: a circRNA can have a well-supported BSJ but uncertain isoform boundaries.
 
-The three output modes filter on these axes:
+The four output modes filter on these axes:
 
 | Output            | Kept entries                              |
 | ----------------- | ----------------------------------------- |
 | `discovery`       | All (no filter)                           |
-| `balanced`        | ≥ Medium on both axes                     |
+| `balanced_precision` | ≥ Medium on both axes                  |
+| `balanced_recall` | ≥ Medium on both, or Low from a trusted tool (CIRI-long/IsoCirc) |
 | `high_confidence` | High on **both** axes                     |
 
 > **Note:** Scores reflect agreement among the tools that actually ran. A `High` from 2 tools (both agree) is not equivalent to `High` from 4 tools. The pipeline warns when fewer than 4 tools are active.
+
+## Cross-run merge and quantification
+
+Set `--run_crossrun_merge true` (with a `group` column in the samplesheet) to merge circRNA calls across sequencing runs of the same sample, using the same tiered confidence logic across runs instead of tools. A locus's back-splice junction (BSJ) position and its exon structure are voted on separately: this keeps a well-supported BSJ from being dropped just because different runs reported slightly different exon structures at the same junction. A single-run structure call is kept only if that run's own tool agreement clears `--circrna_crossrun_min_corroboration`.
+
+Set `--run_quantify true` to add per-locus read counts, either per sample or per group depending on `--run_crossrun_merge`. The `discovery`/`balanced_recall` tiers then go through a confidence filter that drops low-read loci called only by CircNick-LRS, or intergenic/antisense loci called by only one tool, using `--circrna_confident_min_reads` as the read-count cutoff.
+
+See [docs/usage.md](docs/usage.md) and [docs/output.md](docs/output.md) for full details.
 
 ## Credits
 

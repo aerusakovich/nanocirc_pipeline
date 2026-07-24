@@ -56,17 +56,15 @@ workflow {
     main:
     params.fasta = getGenomeAttribute('fasta')
 
-    // Nextflow v2 strict parser delivers all CLI params as strings.
-    // Coerce declared-boolean params before nf-schema validation runs.
-    [
-        'run_isocirc', 'run_circfl', 'run_cirilong', 'run_circnick',
-        'run_crossrun_merge', 'run_benchmark_modes',
-        'skip_qc', 'skip_fastqc', 'skip_nanoplot', 'skip_multiqc', 'skip_annotation',
-        'igenomes_ignore', 'plaintext_email', 'monochrome_logs', 'validate_params',
-        'version', 'help', 'help_full', 'show_hidden'
-    ].each { p ->
-        if (params[p] instanceof String) params[p] = params[p].toBoolean()
-    }
+    // Nextflow v2 strict parser delivers all CLI params as strings. A prior
+    // version of this block tried to coerce them here via params[p] =
+    // params[p].toBoolean(), but that does not work: Nextflow keeps
+    // returning the original CLI string on every later read of params.X
+    // regardless of this reassignment (the CLI-supplied value always wins),
+    // confirmed with a minimal repro script. Each consuming file now reads
+    // and coerces its own boolean params once into local variables instead
+    // (see asBool() in workflows/nanocirc.nf and
+    // subworkflows/local/circrna_analysis.nf).
 
     //
     // SUBWORKFLOW: Run initialisation tasks

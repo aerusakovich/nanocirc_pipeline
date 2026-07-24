@@ -170,7 +170,7 @@ def write_outputs(groups, active_tools, sample, mode, outdir):
     union_conf_lines = []
     inter_conf_lines = []
 
-    # TSV header — two block columns per tool, then isoform_confidence
+    # TSV header: two block columns per tool, then isoform_confidence
     tool_flag_cols  = active_tools
     tool_block_cols = []
     for t in active_tools:

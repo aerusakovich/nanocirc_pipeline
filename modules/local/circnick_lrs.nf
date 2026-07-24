@@ -31,7 +31,7 @@ process CIRCNICK_LRS {
     mkdir -p ${out}
 
     # circnick-lrs requires gzipped input.
-    # Use meta.id as filename — circnick uses it as the output subdirectory name.
+    # Use meta.id as filename. circnick uses it as the output subdirectory name.
     ${link_cmd}
 
     long_read_circRNA run \\

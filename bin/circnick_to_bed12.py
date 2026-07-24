@@ -23,16 +23,6 @@ def parse_args():
     return sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
 
-def print_error(error, context="Line", context_str=""):
-    error_str = "ERROR: Please check input files -> {}".format(error)
-    if context != "" and context_str != "":
-        error_str = "ERROR: Please check input files -> {}\n{}: '{}'".format(
-            error, context, context_str
-        )
-    print(error_str)
-    sys.exit(1)
-
-
 def isoform_to_blocks(exon_list, chrom_start, chrom_end):
     """
     Convert a list of (exon_start, exon_end) tuples to BED12 block columns.
@@ -53,7 +43,7 @@ def isoform_to_blocks(exon_list, chrom_start, chrom_end):
         exon_end   = min(exon_end,   chrom_end)
 
         if exon_start >= exon_end:
-            continue   # exon completely outside BSJ — skip
+            continue   # exon completely outside BSJ, skip
 
         sizes.append(exon_end - exon_start)
         starts.append(exon_start - chrom_start)
@@ -91,7 +81,7 @@ def read_annotated(path):
                 continue
 
             if len(cols) < 7:
-                print(f"WARNING annotated.txt line {lineno}: expected >=7 cols, got {len(cols)} — skipping")
+                print(f"WARNING annotated.txt line {lineno}: expected >=7 cols, got {len(cols)}, skipping")
                 continue
 
             circ_id     = cols[0]
@@ -104,7 +94,7 @@ def read_annotated(path):
             strand      = strand_gene[0]
 
             if strand not in ("+", "-"):
-                print(f"WARNING annotated.txt line {lineno}: unexpected strand '{strand}' — setting to '.'")
+                print(f"WARNING annotated.txt line {lineno}: unexpected strand '{strand}', setting to '.'")
                 strand = "."
 
             result[circ_id] = {
@@ -141,7 +131,7 @@ def read_exon_usage(path):
                 continue
 
             if len(cols) < 7:
-                print(f"WARNING exon_usage line {lineno}: expected >=7 cols, got {len(cols)} — skipping")
+                print(f"WARNING exon_usage line {lineno}: expected >=7 cols, got {len(cols)}, skipping")
                 continue
 
             circ_id = cols[0]
@@ -198,7 +188,7 @@ def read_intron_coverage(path):
                 intron_start = int(cols[1])
                 intron_end   = int(cols[2])
             except ValueError:
-                print(f"WARNING intron_cov line {lineno}: non-numeric coords — skipping")
+                print(f"WARNING intron_cov line {lineno}: non-numeric coords, skipping")
                 continue
 
             if circ_id not in result:
@@ -265,7 +255,7 @@ def convert(annotated_file, exon_file, intron_file, out_file):
                 if not exons:
                     # fallback: single block spanning full BSJ
                     exons = [(chrom_start, chrom_end)]
-                    print(f"WARNING: {circ_id} has no exon or intron data — writing as single block")
+                    print(f"WARNING: {circ_id} has no exon or intron data, writing as single block")
                     skipped_no_exon += 1
                 else:
                     recovered += 1
@@ -274,7 +264,7 @@ def convert(annotated_file, exon_file, intron_file, out_file):
 
             result = isoform_to_blocks(exons, chrom_start, chrom_end)
             if result is None:
-                print(f"WARNING: {circ_id} all exons outside BSJ — skipping")
+                print(f"WARNING: {circ_id} all exons outside BSJ, skipping")
                 skipped_other += 1
                 continue
 

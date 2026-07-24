@@ -42,16 +42,6 @@ def parse_args(args=None):
     return parser.parse_args(args)
 
 
-def print_error(error, context="Line", context_str=""):
-    error_str = "ERROR: Please check input files -> {}".format(error)
-    if context != "" and context_str != "":
-        error_str = "ERROR: Please check input files -> {}\n{}: '{}'".format(
-            error, context, context_str
-        )
-    print(error_str)
-    sys.exit(1)
-
-
 def read_lifted_bed(path):
     """
     Read a liftOver output BED4 file.
@@ -107,7 +97,7 @@ def lift_annotated(orig_path, lifted_coords, failed_circs, out_path):
 
             # exclude if BSJ itself failed to lift
             if name not in lifted_coords:
-                sys.stderr.write("WARNING: {} BSJ not lifted — skipping\n".format(name))
+                sys.stderr.write("WARNING: {} BSJ not lifted, skipping\n".format(name))
                 skipped += 1
                 continue
 
@@ -124,7 +114,7 @@ def lift_annotated(orig_path, lifted_coords, failed_circs, out_path):
             out.write("\t".join(cols) + "\n")
             written += 1
 
-    print("[lift_annotated] {} records written, {} skipped → {}".format(
+    print("[lift_annotated] {} records written, {} skipped, output {}".format(
         written, skipped, out_path
     ))
 
@@ -153,7 +143,7 @@ def lift_exon_usage(orig_path, lifted_coords, out_path):
     skipped  = 0
     exon_idx = 0   # counts data lines only (no header)
 
-    # first pass — find which circRNAs have any failed exon
+    # first pass, find which circRNAs have any failed exon
     failed_circs = set()
     with open(orig_path) as fh:
         for lineno, line in enumerate(fh):
@@ -161,13 +151,13 @@ def lift_exon_usage(orig_path, lifted_coords, out_path):
                 continue
             exon_idx += 1
             cols = line.rstrip("\n").split("\t")
-            if ":" not in cols[4]:   # summary row — no coords, not a liftover failure
+            if ":" not in cols[4]:   # summary row, no coords, not a liftover failure
                 continue
             key  = "{}_EXON_{}".format(cols[0], exon_idx)
             if key not in lifted_coords:
                 failed_circs.add(cols[0])
                 sys.stderr.write(
-                    "WARNING: exon {} not lifted — entire circRNA {} will be excluded\n".format(
+                    "WARNING: exon {} not lifted, entire circRNA {} will be excluded\n".format(
                         key, cols[0]
                     )
                 )
@@ -179,7 +169,7 @@ def lift_exon_usage(orig_path, lifted_coords, out_path):
             )
         )
 
-    # second pass — write only fully lifted circRNAs
+    # second pass, write only fully lifted circRNAs
     exon_idx = 0
     with open(orig_path) as fh, open(out_path, "w") as out:
         for lineno, line in enumerate(fh):
@@ -199,7 +189,7 @@ def lift_exon_usage(orig_path, lifted_coords, out_path):
                 skipped += 1
                 continue
 
-            # summary row — no coords to update, write as-is
+            # summary row, no coords to update, write as-is
             if ":" not in cols[4]:
                 out.write("\t".join(cols) + "\n")
                 written += 1
@@ -233,13 +223,13 @@ def main():
     print("[circnick_liftover] Lifted circRNAs: {}".format(len(lifted_annotated)))
     print("[circnick_liftover] Lifted exons:    {}".format(len(lifted_exons)))
 
-    # ── exon usage first — identifies which circRNAs failed ──
+    # exon usage first, identifies which circRNAs failed
     out_exon_usage = "{}_lifted_exon_usage.txt".format(args.sample)
     failed_circs   = lift_exon_usage(
         args.orig_exon_usage, lifted_exons, out_exon_usage
     )
 
-    # ── annotated.txt — exclude any circRNA with failed exons ─
+    # annotated.txt: exclude any circRNA with failed exons
     out_annotated = "{}_lifted_annotated.txt".format(args.sample)
     lift_annotated(
         args.orig_annotated, lifted_annotated, failed_circs, out_annotated

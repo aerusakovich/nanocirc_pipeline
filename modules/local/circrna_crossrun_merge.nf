@@ -22,20 +22,35 @@ process CIRCRNA_CROSSRUN_MERGE {
     def n            = meta.sample_ids.size()
     def raw_prefix   = "${meta.id}_${meta.tier}_crossrun"
     prefix           = raw_prefix  // used in output block
-    def min_count    = meta.tier == 'discovery'       ? 1
-                     : meta.tier == 'balanced'        ? Math.max(2, Math.ceil(0.25 * n).toInteger())
-                     : /* high_confidence */            Math.ceil(0.75 * n).toInteger()
+    def min_count    = meta.tier == 'discovery'                                    ? 1
+                     : (meta.tier == 'balanced_precision' || meta.tier == 'balanced_recall') ? Math.max(2, Math.ceil(0.25 * n).toInteger())
+                     : /* high_confidence */                                        Math.ceil(0.75 * n).toInteger()
     """
-    # ── smart_merge ────────────────────────────────────────────────────────────
-    # Generates all 4 mode files; only the hybrid outputs are used below.
-    # The consensus/xstruct/priority files stay in the work dir, untracked.
+    # smart_merge: makes all 4 mode files, only the hybrid ones are used below.
+    # The consensus, xstruct and priority files stay in the work dir, unused.
+    #
+    # --conf_tsvs turns on cross-run merge mode. Here each sample is
+    # already a merged catalog, not one raw call per tool, so its bed12 can
+    # have several records (main plus isoN) at the same locus. Without
+    # --conf_tsvs, smart_merge.py reduces each sample to one record by raw
+    # score before voting. That can drop a sample's own correct 'main' pick
+    # if another record from the same sample has a higher score.
+    # --conf_tsvs instead groups every record by its real structure and
+    # ranks groups by summed struct_agree_count (total tool agreement).
+    # See cross_run_hybrid_entries() in smart_merge.py.
+    #
+    # --min_corroboration drops a structure seen in only 1 run, unless that
+    # run's own tool agreement meets this number. Tests showed this cuts
+    # cross-run false positives by about 34%, for a small recall cost.
     smart_merge.py \\
         --sample        ${raw_prefix} \\
         --tool_names    ${sample_names} \\
         --bed_files     ${bed_files} \\
+        --conf_tsvs     ${conf_tsvs} \\
         --tolerance     ${params.circrna_bsj_tolerance} \\
         --struct_tolerance ${params.circrna_bsj_tolerance} \\
         --n_active      ${n} \\
+        --min_corroboration ${params.circrna_crossrun_min_corroboration} \\
         --outdir        .
 
     # ── Pairwise bedtools intersect ────────────────────────────────────────────

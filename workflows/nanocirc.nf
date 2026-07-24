@@ -8,11 +8,18 @@ include { NANOPLOT               } from '../modules/nf-core/nanoplot/main'
 include { MULTIQC                } from '../modules/nf-core/multiqc/main'
 include { FASTQ_RENAME           } from '../modules/local/fastq_rename'
 include { CIRCRNA_ANALYSIS            } from '../subworkflows/local/circrna_analysis'
+include { CIRCRNA_QUANTIFY        } from '../subworkflows/local/circrna_quantify'
+include { QUANT_APPEND_COUNTS     } from '../modules/local/quant_append_counts'
 include { CIRCRNA_CROSSRUN_MERGE  } from '../modules/local/circrna_crossrun_merge'
+include { FILTER_CONFIDENT_DISCOVERY } from '../modules/local/filter_confident_discovery'
 include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_nanocirc_pipeline'
+
+def asBool(value) {
+    return value instanceof String ? value.toBoolean() : (value as boolean)
+}
 
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -30,21 +37,33 @@ workflow NANOCIRC {
     ch_versions = channel.empty()
     ch_multiqc_files = channel.empty()
 
-    // Ensure all FASTQ files are named *.fastq.gz — required by NanoPlot
-    // which detects input type from extension
+    // Coerce every boolean CLI flag used below once, up front. See asBool().
+    def skipQc          = asBool(params.skip_qc)
+    def skipFastqc      = asBool(params.skip_fastqc)
+    def skipNanoplot    = asBool(params.skip_nanoplot)
+    def skipMultiqc     = asBool(params.skip_multiqc)
+    def runIsocirc      = asBool(params.run_isocirc)
+    def runCircfl       = asBool(params.run_circfl)
+    def runCirilong     = asBool(params.run_cirilong)
+    def runCircnick     = asBool(params.run_circnick)
+    def runCrossrunMerge = asBool(params.run_crossrun_merge)
+    def runQuantify      = asBool(params.run_quantify)
+
+    // Ensure all FASTQ files are named *.fastq.gz. NanoPlot needs this,
+    // it detects input type from the extension.
     FASTQ_RENAME ( ch_samplesheet )
     ch_fastq = FASTQ_RENAME.out.fastq
 
     //
     // QC: FastQC and NanoPlot
     //
-    if (!params.skip_qc) {
-        if (!params.skip_fastqc) {
+    if (!skipQc) {
+        if (!skipFastqc) {
             FASTQC ( ch_fastq )
             ch_multiqc_files = ch_multiqc_files.mix(FASTQC.out.zip.collect{ v -> v[1] })
             ch_versions      = ch_versions.mix(FASTQC.out.versions.first())
         }
-        if (!params.skip_nanoplot) {
+        if (!skipNanoplot) {
             NANOPLOT ( ch_fastq )
             ch_versions = ch_versions.mix(NANOPLOT.out.versions.first())
         }
@@ -59,13 +78,13 @@ workflow NANOCIRC {
     if (!params.gtf) {
         error("CircRNA analysis requires '--gtf' (gene annotation).")
     }
-    if ((params.run_isocirc || params.run_cirilong) && !params.circrna_db) {
+    if ((runIsocirc || runCirilong) && !params.circrna_db) {
         error("isocirc and ciri-long require '--circrna_db' (circRNA database).")
     }
-    if (!params.run_isocirc && !params.run_circfl && !params.run_cirilong && !params.run_circnick) {
+    if (!runIsocirc && !runCircfl && !runCirilong && !runCircnick) {
         error("At least one tool must be active. Use --run_isocirc, --run_circfl, --run_cirilong, or --run_circnick.")
     }
-    if (params.run_circnick) {
+    if (runCircnick) {
         if (!params.circnick_species) {
             error("Parameter '--circnick_species' is required when '--run_circnick' is set. Valid options: 'mouse', 'human'")
         }
@@ -77,7 +96,7 @@ workflow NANOCIRC {
         }
     }
 
-    if (params.run_crossrun_merge) {
+    if (runCrossrunMerge) {
         // Validate: every sample must declare a group when cross-run merge is on
         ch_samplesheet
             .filter { meta, _fastq -> !meta.group }
@@ -97,13 +116,13 @@ workflow NANOCIRC {
     //
     // Cross-sample merge: group per-sample outputs by samplesheet 'group' field
     //
-    if (params.run_crossrun_merge) {
+    if (runCrossrunMerge) {
         def group_by_tier = { bed_ch, conf_ch, tier_name ->
             bed_ch
                 .filter  { meta, _bed -> meta.group }
                 .join    ( conf_ch, by: 0 )
                 .map     { meta, bed, tsv -> tuple(meta.group, meta.id, bed, tsv) }
-                .groupTuple()
+                .groupTuple(sort: { entry -> entry[0] })
                 .map     { grp, sample_ids, beds, tsvs ->
                     tuple([id: grp, sample_ids: sample_ids, tier: tier_name], beds, tsvs)
                 }
@@ -112,7 +131,9 @@ workflow NANOCIRC {
         def ch_crossrun = group_by_tier.call(
                 CIRCRNA_ANALYSIS.out.discovery_bed,  CIRCRNA_ANALYSIS.out.discovery_conf,  'discovery')
             .mix(group_by_tier.call(
-                CIRCRNA_ANALYSIS.out.balanced_bed,   CIRCRNA_ANALYSIS.out.balanced_conf,   'balanced'))
+                CIRCRNA_ANALYSIS.out.balanced_bed,   CIRCRNA_ANALYSIS.out.balanced_conf,   'balanced_precision'))
+            .mix(group_by_tier.call(
+                CIRCRNA_ANALYSIS.out.balanced_recall_bed, CIRCRNA_ANALYSIS.out.balanced_recall_conf, 'balanced_recall'))
             .mix(group_by_tier.call(
                 CIRCRNA_ANALYSIS.out.high_conf_bed,  CIRCRNA_ANALYSIS.out.high_conf_conf,  'high_confidence'))
 
@@ -122,6 +143,102 @@ workflow NANOCIRC {
             CIRCRNA_ANALYSIS.out.exon_bed
         )
         ch_versions = ch_versions.mix(CIRCRNA_CROSSRUN_MERGE.out.versions.first())
+    }
+
+    //
+    // circRNA quantification
+    //
+
+    if (runQuantify) {
+        def ch_sample_discovery = CIRCRNA_ANALYSIS.out.discovery_bed
+            .join(CIRCRNA_ANALYSIS.out.discovery_conf, by: 0)
+            .map { meta, bed, tsv -> [meta, bed, tsv] }
+
+        def ch_unit_catalog
+        def ch_run_to_unit
+
+        if (runCrossrunMerge) {
+            def ch_group_discovery = CIRCRNA_CROSSRUN_MERGE.out.bed
+                .filter { m, _bed -> m.tier == 'discovery' }
+                .join   ( CIRCRNA_CROSSRUN_MERGE.out.confidence.filter { m, _c -> m.tier == 'discovery' }, by: 0 )
+
+            ch_unit_catalog = ch_group_discovery
+                .map { m, bed, conf -> [m.id, bed, conf] }
+
+            def ch_sid_to_unit = ch_group_discovery
+                .flatMap { m, _bed, _conf -> m.sample_ids.collect { sid -> [sid, m.id] } }
+
+            ch_run_to_unit = ch_fastq
+                .map { meta, _fq -> [meta.id, meta] }
+                .join( ch_sid_to_unit, by: 0 )
+                .map { _sid, meta, unit_id -> [meta, unit_id] }
+        } else {
+            ch_unit_catalog = ch_sample_discovery
+                .map { meta, bed, conf -> [meta.id, bed, conf] }
+
+            ch_run_to_unit = ch_fastq
+                .map { meta, _fq -> [meta, meta.id] }
+        }
+
+        CIRCRNA_QUANTIFY (
+            ch_fastq,
+            ch_sample_discovery,
+            ch_unit_catalog,
+            ch_run_to_unit,
+            file(params.fasta, checkIfExists: true),
+            CIRCRNA_ANALYSIS.out.isocirc_native,
+            CIRCRNA_ANALYSIS.out.circfl_native,
+            CIRCRNA_ANALYSIS.out.cirilong_reads,
+            CIRCRNA_ANALYSIS.out.circnick_native
+        )
+        ch_versions = ch_versions.mix(CIRCRNA_QUANTIFY.out.versions)
+
+        def ch_clean_for_quant
+        if (runCrossrunMerge) {
+            ch_clean_for_quant = ch_run_to_unit
+                .map     { meta, unit_id -> [unit_id, meta] }
+                .combine ( CIRCRNA_CROSSRUN_MERGE.out.clean.map { m, tsv -> [m.id, m.tier, tsv] }, by: 0 )
+                .map     { _unit_id, meta, tier, tsv -> [meta + [category: tier], tsv] }
+        } else {
+            ch_clean_for_quant = CIRCRNA_ANALYSIS.out.clean_tsv
+                .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_precision', 'balanced_recall', 'high_confidence'] }
+        }
+
+        def ch_clean_for_append = ch_clean_for_quant
+            .map { meta, tsv -> [meta.id, meta, tsv] }
+            .combine( CIRCRNA_QUANTIFY.out.cluster_map.map { meta, cmap -> [meta.id, cmap] }, by: 0 )
+            .combine( CIRCRNA_QUANTIFY.out.final_counts.map { meta, counts -> [meta.id, counts] }, by: 0 )
+            .map { _id, meta, tsv, cmap, counts -> [meta, tsv, cmap, counts] }
+
+        QUANT_APPEND_COUNTS ( ch_clean_for_append )
+        ch_versions = ch_versions.mix(QUANT_APPEND_COUNTS.out.versions.first())
+
+        def ch_bed_for_quant
+        if (runCrossrunMerge) {
+            ch_bed_for_quant = ch_run_to_unit
+                .map     { meta, unit_id -> [unit_id, meta] }
+                .combine ( CIRCRNA_CROSSRUN_MERGE.out.bed.map { m, bed -> [m.id, m.tier, bed] }, by: 0 )
+                .map     { _unit_id, meta, tier, bed -> [meta + [category: tier], bed] }
+        } else {
+            ch_bed_for_quant = CIRCRNA_ANALYSIS.out.discovery_bed.map        { m, b -> [m + [category: 'discovery'],          b] }
+                .mix( CIRCRNA_ANALYSIS.out.balanced_bed.map        { m, b -> [m + [category: 'balanced_precision'],  b] } )
+                .mix( CIRCRNA_ANALYSIS.out.balanced_recall_bed.map { m, b -> [m + [category: 'balanced_recall'],     b] } )
+                .mix( CIRCRNA_ANALYSIS.out.high_conf_bed.map       { m, b -> [m + [category: 'high_confidence'],    b] } )
+        }
+
+        def ch_for_confident_filter = QUANT_APPEND_COUNTS.out.clean
+            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_recall'] }
+            .map    { meta, tsv -> [[meta.id, meta.category], meta, tsv] }
+            .combine(
+                ch_bed_for_quant
+                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced_recall'] }
+                    .map    { meta, bed -> [[meta.id, meta.category], bed] },
+                by: 0
+            )
+            .map { _key, meta, tsv, bed -> [meta, tsv, bed] }
+
+        FILTER_CONFIDENT_DISCOVERY ( ch_for_confident_filter )
+        ch_versions = ch_versions.mix(FILTER_CONFIDENT_DISCOVERY.out.versions.first())
     }
 
     //
@@ -156,7 +273,7 @@ workflow NANOCIRC {
     //
     // MODULE: MultiQC
     //
-    if (!params.skip_multiqc) {
+    if (!skipMultiqc) {
         def ch_multiqc_config        = channel.fromPath(
             "$projectDir/assets/multiqc_config.yml", checkIfExists: true)
         def ch_multiqc_custom_config = params.multiqc_config ?
@@ -196,7 +313,7 @@ workflow NANOCIRC {
     }
 
     emit:
-    multiqc_report = params.skip_multiqc ? [] : MULTIQC.out.report.toList()
+    multiqc_report = skipMultiqc ? [] : MULTIQC.out.report.toList()
     versions       = ch_versions
 }
 

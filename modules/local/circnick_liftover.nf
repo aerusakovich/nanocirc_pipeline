@@ -9,7 +9,7 @@ process CIRCNICK_LIFTOVER {
     input:
     tuple val(meta),  path(annotated)    // circRNA_candidates.annotated.txt
     tuple val(meta2), path(exon_usage)   // circ_circRNA_exon_usage_length_of_exons.txt
-    tuple val(meta3), path(intron_cov)   // intronCov.bed — also needs liftover
+    tuple val(meta3), path(intron_cov)   // intronCov.bed, also needs liftover
     path  chain                          // liftOver chain file (.chain or .chain.gz)
 
     output:
@@ -55,8 +55,8 @@ process CIRCNICK_LIFTOVER {
         exon_unmapped.bed
 
     # ── Step 3: lift intron_cov.bed ───────────────────────────
-    # intron_cov is already BED format — cols 0,1,2 are chrom,start,end
-    # col 10 is circ_id — keep as name for re-joining
+    # intron_cov is already BED format. Cols 0,1,2 are chrom,start,end
+    # col 10 is circ_id, keep as name for re-joining
     awk 'OFS="\\t" {print \$1, \$2, \$3, \$11 "_INTRON_" NR}' ${intron_cov} \\
         > intron_for_lift.bed
 

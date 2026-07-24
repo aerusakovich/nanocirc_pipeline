@@ -2,7 +2,7 @@ process PREPARE_GENOME {
     tag "prepare_genome"
     label 'process_low'
 
-    // Cache results — skipped on subsequent runs if files already exist here
+    // Cache results, skipped on subsequent runs if files already exist here
     storeDir "${params.genome_index_dir ?: "${params.outdir}/genome_index"}"
 
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -19,19 +19,19 @@ process PREPARE_GENOME {
 
     script:
     """
-    # Resolve symlink — bwapy needs a real file to find index alongside it
+    # Resolve symlink, bwapy needs a real file to find index alongside it
     cp -L ${fasta} genome.fa
 
     # Copy index if it already exists next to source FASTA, otherwise build
     if [ -f "${fasta}.amb" ]; then
-        echo "Index found next to source FASTA — copying"
+        echo "Index found next to source FASTA, copying"
         cp -L ${fasta}.amb genome.fa.amb
         cp -L ${fasta}.ann genome.fa.ann
         cp -L ${fasta}.bwt genome.fa.bwt
         cp -L ${fasta}.pac genome.fa.pac
         cp -L ${fasta}.sa  genome.fa.sa
     else
-        echo "Index not found — building with bwa index"
+        echo "Index not found, building with bwa index"
         bwa index genome.fa
     fi
 

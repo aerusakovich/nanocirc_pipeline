@@ -136,8 +136,8 @@ Merging is only performed when **two or more** detection tools are active.
 
 Each merged circRNA is scored on two **independent** confidence axes:
 
-- **`bsj_consensus`** (`Low`/`Medium`/`High`) — what fraction of active tools agreed on this back-splice junction?
-- **`isoform_consensus`** (`Low`/`Medium`/`High`) — what fraction of active tools confirmed a matching exon structure?
+- **`bsj_consensus`** (`Low`/`Medium`/`High`): what fraction of active tools agreed on this back-splice junction?
+- **`isoform_consensus`** (`Low`/`Medium`/`High`): what fraction of active tools confirmed a matching exon structure?
 
 Each axis is scored by binning the relevant percentage of active tools:
 
@@ -148,22 +148,30 @@ Each axis is scored by binning the relevant percentage of active tools:
 | ≤ 75%             | 3     | Medium    |
 | > 75%             | 4     | High      |
 
-The two axes are intentionally independent — a circRNA can have a well-supported BSJ (High `bsj_consensus`) but an uncertain isoform structure (Low `isoform_consensus`), or vice versa.
+The two axes are intentionally independent. A circRNA can have a well-supported BSJ (High `bsj_consensus`) but an uncertain isoform structure (Low `isoform_consensus`), or the other way round.
 
-The three merged output modes apply different filters to these axes:
+The four merged output modes apply different filters to these axes:
 
 | Output            | Filter applied                             | Axes kept                    |
 | ----------------- | ------------------------------------------ | ---------------------------- |
 | `discovery`       | None                                       | All entries (maximum recall) |
-| `balanced`        | Remove Low on either axis (`no_low`)       | ≥ Medium on both axes        |
+| `balanced_precision` | Remove Low on either axis (`no_low`)    | ≥ Medium on both axes        |
+| `balanced_recall` | `consensus`-algorithm calls, Low kept if from a trusted tool (`trusted_only`) | ≥ Medium on both, or Low from CIRI-long/IsoCirc/circFL |
 | `high_confidence` | Require High on both axes (`high_only`)    | High on both axes only       |
 
 > [!WARNING]
-> **Fewer than 4 tools reduces scoring resolution.** The pipeline emits a warning when fewer than 4 tools are active. Consensus labels always reflect agreement among the tools that _ran_ — a `High` from 2 tools (both agree) is not the same statistical confidence as `High` from all 4 tools. See [scoring examples](#scoring-examples) below.
+> **Fewer than 4 tools reduces scoring resolution.** The pipeline emits a warning when fewer than 4 tools are active. Consensus labels always reflect agreement among the tools that _ran_. A `High` from 2 tools (both agree) is not the same statistical confidence as `High` from all 4 tools. See [scoring examples](#scoring-examples) below.
 
 ### Cross-run merge
 
-When the same sample (or biological condition) is sequenced across multiple runs, results can be merged across runs to increase sensitivity and confidence. Each run is treated as an independent "tool" — the same consensus-hybrid algorithm and confidence scoring used for within-sample tool merging is applied across runs.
+When the same sample (or biological condition) is sequenced across multiple runs, results can be merged across runs to increase sensitivity and confidence. Each run is treated as an independent "tool", using the same consensus-hybrid algorithm and confidence scoring used for within-sample tool merging.
+
+Cross-run merge scores each candidate locus with two separate votes:
+
+- **BSJ vote**: counts how many different runs support the exact back-splice junction position, ignoring exon structure. This decides which count tier (`discovery`/`balanced_precision`/`balanced_recall`/`high_confidence`) a locus qualifies for.
+- **Structure vote**: among records at the winning BSJ position only, groups them by exon structure and ranks groups by total tool agreement. This decides the final isoform structure reported for that locus.
+
+A structure seen in only 1 run is dropped unless that run's own tool agreement meets `--circrna_crossrun_min_corroboration` (default `2`). This removes weak, single-run structure calls without touching the separate BSJ vote. Testing on real data showed this cuts cross-run false positives by about 34%, for a small recall cost. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry, they are not merged away.
 
 To enable cross-run merge, add a `group` column to the samplesheet. Samples sharing the same group name are merged together:
 
@@ -188,14 +196,16 @@ nextflow run nf-core/nanocirc \
 | Parameter              | Description                                           | Default |
 | ---------------------- | ----------------------------------------------------- | ------- |
 | `--run_crossrun_merge` | Enable cross-run merging using the `group` column     | `false` |
+| `--circrna_crossrun_min_corroboration` | Min tool agreement needed to keep a single-run structure (see below) | `2` |
 
-In plain terms, the three tiers mean:
+In plain terms, the four tiers mean:
 
 | Tier              | What it takes to be retained |
 | ----------------- | ----------------------------- |
-| **`discovery`**   | Detected by **at least 1 tool** in **at least 1 run** — maximum sensitivity, use for exploration |
-| **`balanced`**    | **Multiple tools agreed** within a run AND **multiple runs** support it — recommended for most analyses |
-| **`high_confidence`** | **All tools agreed** within runs AND **most/all runs** support it — maximum precision, lowest false positive rate |
+| **`discovery`**   | Detected by **at least 1 tool** in **at least 1 run**. Maximum sensitivity, use for exploration |
+| **`balanced_precision`** | **Multiple tools agreed** within a run and **multiple runs** support it. Recommended for most analyses |
+| **`balanced_recall`** | Same run/support thresholds as `balanced_precision`, built on the `consensus` algorithm's trusted_only filtering. Keeps Low-confidence calls from trusted tools that `balanced_precision` would drop |
+| **`high_confidence`** | **All tools agreed** within runs and **most/all runs** support it. Maximum precision, lowest false positive rate |
 
 **Count thresholds applied per tier:**
 
@@ -204,11 +214,41 @@ The cross-run merge applies different minimum-sample-count filters depending on 
 | Tier              | Minimum samples required         |
 | ----------------- | -------------------------------- |
 | `discovery`       | ≥ 1 (all circRNAs retained)      |
-| `balanced`        | ≥ max(2, ceil(0.25 × n))         |
+| `balanced_precision` | ≥ max(2, ceil(0.25 × n))      |
+| `balanced_recall` | ≥ max(2, ceil(0.25 × n))         |
 | `high_confidence` | ≥ ceil(0.75 × n)                 |
 
 > [!NOTE]
 > The `group` column is optional. Samples without a group are processed per-sample only and are not included in any cross-run merge output.
+
+### Quantification
+
+Set `--run_quantify true` to enable circRNA read quantification: chunked remap-and-classify (tier1) against synthetic circle references, overlap-cluster rescue, then targeted (tier2) and gene-family (tier3) rescue for loci tier1 handled poorly. See [docs/output.md](output.md#quantification) for the output format.
+
+Without `--run_crossrun_merge`, each sample is quantified against its own discovery catalog. With `--run_crossrun_merge`, every sample sharing a `group` is quantified against that group's crossrun discovery catalog instead. This gives one shared set of loci per group, so counts are comparable across samples, for example for differential expression.
+
+After quantification, the `discovery` and `balanced_recall` tiers also go through a confidence filter (`FILTER_CONFIDENT_DISCOVERY`) that drops two known low-confidence patterns with weak read support:
+
+- Loci only CircNick-LRS called, with a quantified read count at or below `--circrna_confident_min_reads`.
+- Intergenic or antisense loci supported by only one tool, with a quantified read count at or below `--circrna_confident_min_reads`.
+
+`balanced_precision` and `high_confidence` are not touched by this filter. Their own stricter multi-tool consensus rules already exclude this pattern.
+
+```bash
+nextflow run nf-core/nanocirc \
+    --input samplesheet.csv \
+    --run_quantify true \
+    ...
+```
+
+| Parameter                       | Description                                                       | Default |
+| -------------------------------- | ------------------------------------------------------------------ | ------- |
+| `--run_quantify`                 | Enable quantification                                              | `false` |
+| `--quant_chunk_size`             | Loci per reference chunk for tier1                                 | `100`   |
+| `--quant_chunk_seed`             | Fixed shuffle seed for chunk assignment                             | `42`    |
+| `--quant_locus_dedup_tolerance`  | bp tolerance (both start AND end) for near-duplicate locus dedup   | `10`    |
+| `--quant_min_old_tool_count`     | Min independent old-tool-count to flag a locus for tier2 rescue    | `50`    |
+| `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced_recall confidence filter (see above) | `2` |
 
 ### QC options
 
@@ -360,4 +400,4 @@ The tables below illustrate how `bsj_consensus` and `isoform_consensus` are assi
 | Only 1 tool detects                    | 1/2 (50%)  | 0/2 (0%)      | 2         | **Medium**    | 1         | **Low**           |
 
 > [!WARNING]
-> `High` from 2 tools means both tools agreed with matching isoforms. With 4 tools, the same label requires independent confirmation from at least 3 tools — a substantially stronger claim. Always consider the `bsj_confidence` column (raw tool count) alongside the consensus labels.
+> `High` from 2 tools means both tools agreed with matching isoforms. With 4 tools, the same label requires independent confirmation from at least 3 tools, a substantially stronger claim. Always consider the `bsj_confidence` column (raw tool count) alongside the consensus labels.

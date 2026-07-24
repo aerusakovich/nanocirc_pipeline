@@ -24,7 +24,7 @@ Independent consensus labels (score 1→Low, 2-3→Medium, 4→High):
     bsj_consensus     : quality of BSJ detection across tools
     isoform_consensus : quality of exon-structure agreement across tools
 
-These two metrics are intentionally separate — a circRNA can have a
+These two metrics are intentionally separate. A circRNA can have a
 well-supported BSJ but an uncertain exon structure (or vice versa).
 filter_confidence.py uses them independently:
   no_low       → removes records with Low on EITHER bsj_consensus OR
@@ -199,13 +199,13 @@ def compute_scores(bsj_id, bsj_confidence, tool_flags, all_pair_results, n_activ
                         lookup behaviour is preserved.
 
     Returns:
-        isoform_confidence : int  — number of tools supporting this specific structure
-        bsj_score          : int  — BSJ agreement score (1-4)
-        bsj_consensus      : str  — Low / Medium / High for BSJ detection
-        isoform_score      : int  — isoform structure agreement score (1-4, min 1)
-        isoform_consensus  : str  — Low / Medium / High for exon structure
-        overlap_score      : int  — 1-4 based on avg pairwise fraction, 1 if no pairs
-        pair_fracs         : dict — { (tool_a, tool_b): (frac_a, frac_b) or (None, None) }
+        isoform_confidence (int): number of tools supporting this specific structure
+        bsj_score (int): BSJ agreement score (1-4)
+        bsj_consensus (str): Low / Medium / High for BSJ detection
+        isoform_score (int): isoform structure agreement score (1-4, min 1)
+        isoform_consensus (str): Low / Medium / High for exon structure
+        overlap_score (int): 1-4 based on avg pairwise fraction, 1 if no pairs
+        pair_fracs (dict): { (tool_a, tool_b): (frac_a, frac_b) or (None, None) }
     """
     detected = {tool for tool, flag in tool_flags.items() if flag == "1"}
 

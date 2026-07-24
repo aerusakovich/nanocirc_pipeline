@@ -5,24 +5,24 @@ filter_confidence.py
 Filters a scored confidence TSV + matching BED12 using the two independent
 confidence axes produced by add_isoform_confidence.py:
 
-    bsj_consensus     — quality of BSJ detection across tools (Low/Medium/High)
-    isoform_consensus — quality of exon-structure agreement across tools
+    bsj_consensus     : quality of BSJ detection across tools (Low/Medium/High)
+    isoform_consensus : quality of exon-structure agreement across tools
 
 Filter modes:
-  trusted_only  — Balanced mode.
-                  Removes Low entries on each axis UNLESS the call comes from
-                  a trusted tool (CIRI-long or IsoCirc), which are kept even
-                  when confidence is Low.
-                  - bsj_consensus Low → keep if bsj_source in {cirilong, isocirc}
-                  - isoform_consensus Low → keep if any tool in isoform_tools
-                    is in {cirilong, isocirc}
-                  CircFL and CircNick-LRS Low calls are removed on both axes.
+  trusted_only  : Balanced mode.
+                  Removes Low entries on each axis unless the call comes from
+                  a trusted tool (CIRI-long, IsoCirc, or circFL), which are
+                  kept even when confidence is Low.
+                  - bsj_consensus Low: keep if bsj_source in {cirilong, isocirc, circfl}
+                  - isoform_consensus Low: keep if any tool in isoform_tools
+                    is in {cirilong, isocirc, circfl}
+                  CircNick-LRS Low calls are removed on both axes.
 
-  no_low        — High-confidence mode.
-                  Removes ALL entries with Low on EITHER axis, no exceptions.
+  no_low        : High-confidence mode.
+                  Removes all entries with Low on either axis, no exceptions.
 
-  high_only     — Strictest filter.
-                  Keeps ONLY entries where BOTH axes are 'High'. Medium is removed.
+  high_only     : Strictest filter.
+                  Keeps only entries where both axes are 'High'. Medium is removed.
 
 Usage:
     filter_confidence.py \\
@@ -89,7 +89,7 @@ def passes_filter(cols, idx, mode):
       bsj_consensus      != Low  (or Low + trusted tool exception)
       isoform_consensus  != Low  (or Low + trusted tool exception)
 
-    high_only: both axes must be exactly 'High' — Medium is also removed.
+    high_only: both axes must be exactly 'High'. Medium is also removed.
     """
     bsj_cons = cols[idx['bsj_consensus']]    if 'bsj_consensus'     in idx else 'NA'
     iso_cons = cols[idx['isoform_consensus']] if 'isoform_consensus' in idx else 'NA'
@@ -132,7 +132,7 @@ def main():
             if 'bsj_consensus' not in header_idx and 'isoform_consensus' not in header_idx:
                 print(
                     '[filter_confidence] WARNING: bsj_consensus / isoform_consensus '
-                    'columns not found — TSV may not have been scored by '
+                    'columns not found, TSV may not have been scored by '
                     'add_isoform_confidence.py. Passing all rows through.',
                     file=sys.stderr
                 )

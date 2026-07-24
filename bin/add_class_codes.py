@@ -8,7 +8,7 @@ circRNA confidence TSV produced by merge_circrna.py / merge_exon_based.py.
 AGAT's agat_convert_bed2gff.pl assigns sequential integers (1, 2, 3…) as
 GFF feature IDs and stores the original BED name field as the GFF 'Name'
 attribute.  gffcompare therefore reports those integers as qry_id / qry_gene_id
-in the .tmap file — not the BSJ id.
+in the .tmap file, not the BSJ id.
 
 This script resolves the mismatch by parsing the AGAT GFF to build an
 integer_ID → Name (bsj_id) lookup before joining with the confidence TSV.

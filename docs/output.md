@@ -8,12 +8,12 @@ This document describes the output produced by the pipeline. All paths are relat
 
 The pipeline processes long-read nanopore FASTQ files through the following steps:
 
-1. **Quality control** — FastQC and NanoPlot assess read quality
-2. **circRNA detection** — up to four tools run in parallel (isoCirc, CircFL-seq, CIRI-long, circnick-lrs)
-3. **BED12 conversion** — each tool's output is converted to a unified BED12 format
-4. **Merging & confidence scoring** — when two or more tools are active, results are merged using the hybrid smart-merge algorithm and scored on two independent confidence axes
-5. **Annotation** — each merged output is annotated with GFF comparison, FASTA extraction, circRNA type classification, and expression counts
-6. **MultiQC** — aggregated QC report
+1. **Quality control**: FastQC and NanoPlot assess read quality
+2. **circRNA detection**: up to four tools run in parallel (isoCirc, CircFL-seq, CIRI-long, circnick-lrs)
+3. **BED12 conversion**: each tool's output is converted to a unified BED12 format
+4. **Merging & confidence scoring**: when two or more tools are active, results are merged using the hybrid smart-merge algorithm and scored on two independent confidence axes
+5. **Annotation**: each merged output is annotated with GFF comparison, FASTA extraction, circRNA type classification, and expression counts
+6. **MultiQC**: aggregated QC report
 
 ---
 
@@ -25,8 +25,8 @@ The pipeline processes long-read nanopore FASTQ files through the following step
 <summary>Output files</summary>
 
 - `qc/<sample>/fastqc/`
-  - `*.html` — FastQC report with quality metrics per sample
-  - `*.zip` — Archive containing the report and raw data
+  - `*.html`: FastQC report with quality metrics per sample
+  - `*.zip`: Archive containing the report and raw data
 
 </details>
 
@@ -38,8 +38,8 @@ The pipeline processes long-read nanopore FASTQ files through the following step
 <summary>Output files</summary>
 
 - `qc/<sample>/nanoplot/`
-  - `NanoPlot-report.html` — Interactive HTML report
-  - `NanoStats.txt` — Summary statistics (N50, mean length, mean quality, etc.)
+  - `NanoPlot-report.html`: Interactive HTML report
+  - `NanoStats.txt`: Summary statistics (N50, mean length, mean quality, etc.)
   - Various PNG plots: read length histogram, quality vs length scatter, etc.
 
 </details>
@@ -58,8 +58,8 @@ Each active tool writes its raw output to a dedicated subdirectory and its BED12
 <summary>Output files</summary>
 
 - `circrna/<sample>/isocirc/`
-  - `isocirc_output/isocirc.bed` — Main isoCirc output (BED format with isoform detail)
-  - `isocirc_output/` — Full isoCirc output directory
+  - `isocirc_output/isocirc.bed`: Main isoCirc output (BED format with isoform detail)
+  - `isocirc_output/`: Full isoCirc output directory
 
 </details>
 
@@ -71,7 +71,7 @@ Each active tool writes its raw output to a dedicated subdirectory and its BED12
 <summary>Output files</summary>
 
 - `circrna/<sample>/circfl_seq/`
-  - `circFL_final.bed` — Final CircFL-seq output
+  - `circFL_final.bed`: Final CircFL-seq output
   - Full pipeline output directory including intermediate RG, DNSC, cRG, mRG steps
 
 </details>
@@ -84,8 +84,8 @@ Each active tool writes its raw output to a dedicated subdirectory and its BED12
 <summary>Output files</summary>
 
 - `circrna/<sample>/ciri_long/`
-  - `<sample>.info` — Main CIRI-long output with circRNA calls and isoform structure
-  - `<sample>.isoforms` — Isoform-level output
+  - `<sample>.info`: Main CIRI-long output with circRNA calls and isoform structure
+  - `<sample>.isoforms`: Isoform-level output
 
 </details>
 
@@ -97,14 +97,14 @@ Each active tool writes its raw output to a dedicated subdirectory and its BED12
 <summary>Output files</summary>
 
 - `circrna/<sample>/circnick_lrs/`
-  - `<sample>/<sample>.circRNA_candidates.annotated.txt` — Annotated circRNA candidates
-  - `<sample>/<sample>.circ_circRNA_exon_usage_length_of_exons.txt` — Exon usage per circRNA
-  - `<sample>/<sample>.introns...intronCov.bed` — Intron coverage file
+  - `<sample>/<sample>.circRNA_candidates.annotated.txt`: Annotated circRNA candidates
+  - `<sample>/<sample>.circ_circRNA_exon_usage_length_of_exons.txt`: Exon usage per circRNA
+  - `<sample>/<sample>.introns...intronCov.bed`: Intron coverage file
 - `circrna/<sample>/circnick_lrs/lifted/` _(only if `--circnick_liftover_chain` was provided)_
-  - `*_lifted_annotated.txt` — Coordinates lifted to target genome build
+  - `*_lifted_annotated.txt`: Coordinates lifted to target genome build
   - `*_lifted_exon_usage.txt`
   - `*_lifted_intron_cov.bed`
-  - `*_liftover_failed.tsv` — circRNAs excluded due to failed liftover
+  - `*_liftover_failed.tsv`: circRNAs excluded due to failed liftover
 
 </details>
 
@@ -116,10 +116,10 @@ Each active tool writes its raw output to a dedicated subdirectory and its BED12
 <summary>Output files</summary>
 
 - `circrna/<sample>/bed12/`
-  - `<sample>_cirilong.bed12` — CIRI-long output in BED12
-  - `<sample>_circnick.bed12` — circnick-lrs output in BED12
-  - `isocirc.bed` — isoCirc output (already in BED format)
-  - `circFL_final.bed` — CircFL-seq output (already in BED format)
+  - `<sample>_cirilong.bed12`: CIRI-long output in BED12
+  - `<sample>_circnick.bed12`: circnick-lrs output in BED12
+  - `isocirc.bed`: isoCirc output (already in BED format)
+  - `circFL_final.bed`: CircFL-seq output (already in BED format)
 
 </details>
 
@@ -133,21 +133,13 @@ Merging is performed when **two or more** detection tools are active. All tools 
 
 ### Pairwise comparisons
 
-<details markdown="1">
-<summary>Output files</summary>
-
-- `circrna/<sample>/merged/pairs/`
-  - `<tool_a>_vs_<tool_b>.txt` — bedtools intersect output for each tool pair (used for isoform confidence scoring)
-
-</details>
-
-All pairwise combinations of active tools are compared using `bedtools intersect -split -wo` to identify shared circRNA isoforms.
+All pairwise combinations of active tools are compared using `bedtools intersect -split -wo` to identify shared circRNA isoforms (used internally for isoform confidence scoring). These intermediate comparison files are not published to the results directory.
 
 ### Merge algorithms
 
 All tools within a relaxed-BSJ group (coordinates within `--circrna_bsj_tolerance` bp) are treated as candidates for the same circRNA. A merge algorithm selects the representative BSJ and exon structure from those candidates.
 
-**BSJ selection** (all modes except `priority`): majority vote across all tools; ties broken by tool priority CIRI-long > CircFL-seq > IsoCirc > CircNick-LRS.
+**BSJ selection** (all modes except `priority`): majority vote across all tools; ties broken by tool priority IsoCirc > CircFL-seq > CircNick-LRS > CIRI-long.
 
 **Structure selection** differs between modes and is described in the tables below.
 
@@ -160,9 +152,9 @@ The pipeline uses `consensus_hybrid` as its merge algorithm.
 | BSJ | Majority vote across all tools |
 | Structure vote participants | Tools sharing the **exact winning BSJ** only |
 | Coordinate comparison | Absolute genomic coords (boundaries within `--circrna_bsj_tolerance` bp) |
-| Rebasing of minority-BSJ tools | **No** — tools with a different BSJ do not contribute to the structure vote |
+| Rebasing of minority-BSJ tools | **No**: tools with a different BSJ do not contribute to the structure vote |
 | Minority-BSJ tool handling | Emitted as separate isoform entries at their own BSJ coordinates |
-| Structure tie-break priority | IsoCirc > CIRI-long > CircNick-LRS > CircFL-seq |
+| Structure tie-break priority | IsoCirc > CircFL-seq > CIRI-long > CircNick-LRS |
 
 This design selects the most-supported exon structure among tools that agree on the BSJ, without shifting coordinates from tools that landed at a slightly different junction. Minority-BSJ isoforms are preserved in the output rather than silently discarded.
 
@@ -171,54 +163,52 @@ This design selects the most-supported exon structure among tools that agree on 
 <details markdown="1">
 <summary>Output files</summary>
 
-- `circrna/<sample>/merged/smart/`
-  - `<sample>_discovery.bed12` — hybrid, unfiltered (maximum recall)
+- `circrna/<sample>/merged/`
+  - `<sample>_discovery.bed12`: hybrid, unfiltered (maximum recall)
   - `<sample>_discovery_confidence.tsv`
-  - `<sample>_balanced.bed12` — hybrid + no_low filter (best F1)
-  - `<sample>_balanced_confidence.tsv`
-  - `<sample>_high_confidence.bed12` — hybrid + high_only filter (best precision)
+  - `<sample>_balanced_precision.bed12`: hybrid + no_low filter (F1 / precision-leaning - lowest FP for decent recall)
+  - `<sample>_balanced_precision_confidence.tsv`
+  - `<sample>_balanced_recall.bed12`: consensus algorithm + trusted_only filter (best F1, recall-leaning)
+  - `<sample>_balanced_recall_confidence.tsv`
+  - `<sample>_high_confidence.bed12`: hybrid + high_only filter (best precision, trusted subset)
   - `<sample>_high_confidence_confidence.tsv`
 
 </details>
 
-Three confidence-filtered outputs are published by default. After merging, each entry is scored on two independent confidence axes (`bsj_consensus` and `isoform_consensus`, each Low / Medium / High) and one of three filters is applied:
+Four confidence-filtered outputs are published by default. After merging, each entry is scored on two independent confidence axes (`bsj_consensus` and `isoform_consensus`, each Low / Medium / High) and one of the following filters is applied:
 
-| Output | Filter | Rule | Axes retained |
-| ------ | ------ | ---- | ------------- |
-| **`discovery`** | none | Keep all entries | any |
-| **`balanced`** | `no_low` | Drop entries where either axis is Low | ≥ Medium on both |
-| **`high_confidence`** | `high_only` | Keep only entries where both axes are High | High on both |
+| Output | Merge algorithm | Filter | Rule | Axes retained |
+| ------ | ---------------- | ------ | ---- | ------------- |
+| **`discovery`** | `consensus_hybrid` | none | Keep all entries, drop circNICK called entries with low read support or rare class entries with low read support (filters out majority of FP for almost no recall loss) | any |
+| **`balanced_precision`** | `consensus_hybrid` | `no_low` | Drop entries where either axis is Low | ≥ Medium on both |
+| **`balanced_recall`** | `consensus` | `trusted_only` | Drop Low-confidence entries unless the source tool is CIRI-long, IsoCirc, drop circNICK called entries with low read support or rare class entries with low read support (filters out majority of FP for almost no recall loss) | ≥ Medium on both, or Low from a trusted tool |
+| **`high_confidence`** | `consensus_hybrid` | `high_only` | Keep only entries where both axes are High | High on both |
+
+`balanced_recall` uses the `consensus` merge algorithm (string-equality structure comparison, see below) rather than `consensus_hybrid`. It is the same trusted_only-filtered output previously published only under `--run_benchmark_modes` as `smart_consensus_filtered`.
 
 #### Additional merge modes (`--run_benchmark_modes`)
 
-Three further algorithms are available for research and benchmarking. All were outperformed by `consensus_hybrid` in benchmark evaluation and are not published by default.
+Two further algorithms remain available for research and benchmarking only. Both were outperformed by `consensus_hybrid`/`consensus` in benchmark evaluation and are not published by default.
 
 | Mode | BSJ selection | Structure vote participants | Minority-BSJ rebasing | Minority-BSJ handling |
 | ---- | ------------- | -------------------------- | --------------------- | --------------------- |
-| `consensus` | Majority vote | Exact-BSJ tools only | No | Separate isoforms at own coords |
-| `consensus_xstruct` | Majority vote | All tools in group | **Yes** — shifted to winning BSJ | Folded into structure vote |
+| `consensus_xstruct` | Majority vote | All tools in group | **Yes**, shifted to winning BSJ | Folded into structure vote |
 | `priority` | Highest-priority tool | Highest-priority tool | No | Separate isoforms at own coords |
 
 Key differences from `consensus_hybrid`:
 
-- **`consensus`** uses string equality for structure comparison rather than coordinate similarity — two tools reporting the same exon structure with a 1 bp boundary difference are treated as distinct isoforms.
+- **`consensus`** (used by `balanced_recall` above) uses string equality for structure comparison rather than coordinate similarity: two tools reporting the same exon structure with a 1 bp boundary difference are treated as distinct isoforms.
 - **`consensus_xstruct`** includes minority-BSJ tools in the structure vote by rebasing their exon coordinates to the winning BSJ. This can incorporate more structural information but may introduce coordinate imprecision when BSJ offset is non-trivial.
-- **`priority`** skips voting entirely — BSJ and structure come unconditionally from the single highest-priority tool present.
+- **`priority`** skips voting entirely: BSJ and structure come unconditionally from the single highest-priority tool present.
 
-With `--run_benchmark_modes`, all three additional algorithms are published with four filter variants each (unfiltered, `no_low`, `trusted_only`, `high_only`).
-
-The `trusted_only` filter is only available in benchmark mode:
-
-| Filter | Rule |
-| ------ | ---- |
-| `trusted_only` | Drop Low-confidence entries unless the source tool is CIRI-long or IsoCirc |
+With `--run_benchmark_modes`, `consensus` additionally publishes its `no_low` filter variant, and `consensus_xstruct`/`priority` each publish all four filter variants (unfiltered, `no_low`, `trusted_only`, `high_only`).
 
 ### Confidence TSV format
 
 All `*_confidence.tsv` files share a common format. Confidence is assessed on two **independent axes**:
 
-- **`bsj_consensus`** — quality of BSJ detection: what fraction of active tools agreed on this back-splice junction?
-- **`isoform_consensus`** — quality of exon-structure agreement: how well do tools agree on the exon boundaries of this isoform?
+- **`bsj_consensus`**: what fraction of active tools agreed on this back-splice junction?
+- **`isoform_consensus`**: how well do tools agree on the exon boundaries of this isoform?
 
 Each axis is scored independently (1=Low, 2–3=Medium, 4=High based on binned percentage of tools) allowing a circRNA to have a well-supported BSJ but uncertain isoform structure, or vice versa.
 
@@ -251,38 +241,38 @@ Each axis is scored independently (1=Low, 2–3=Medium, 4=High based on binned p
 
 > [!NOTE]
 > Consensus labels always reflect agreement among the tools that were actually run.
-> A `High` from 2 tools means both tools agreed — it is not mathematically equivalent
+> A `High` from 2 tools means both tools agreed. It is not mathematically equivalent
 > to `High` from 4 tools. The pipeline emits a warning when fewer than 4 tools are active.
 
 ---
 
 ## Annotation
 
-Each merged output (discovery, balanced, high_confidence) is annotated per sample. Annotation runs when `--skip_annotation` is not set (default: enabled).
+Each merged output (discovery, balanced_precision, balanced_recall, high_confidence) is annotated per sample. Annotation runs when `--skip_annotation` is not set (default: enabled).
 
 ### Output structure
 
 <details markdown="1">
 <summary>Output files</summary>
 
-- `circrna/<sample>/merged/smart/`
-  - `annotated/` — GFF comparison output and annotated TSV (with class codes and reference gene IDs)
-    - `<sample>_<tier>.annotated.tsv` — Full annotated TSV including isoform rows
-  - `clean/` — Wet-lab-friendly filtered TSV (main circRNAs only, no isoform rows)
+- `circrna/<sample>/merged/`
+  - `annotated/`: GFF comparison output and annotated TSV (with class codes and reference gene IDs)
+    - `<sample>_<tier>.annotated.tsv`: Full annotated TSV including isoform rows
+  - `clean/`: Wet-lab-friendly TSV (narrowed column set, type + expression added; same rows, including isoforms, as the annotated TSV)
     - `<sample>_<tier>_clean.tsv`
-  - `fasta/` — FASTA sequences of detected circRNAs
+  - `fasta/`: FASTA sequences of detected circRNAs
     - `<sample>_<tier>.fa`
-  - `gff/` — GFF3 files
-    - `<sample>_<tier>.gff3` — GFF3 derived from BED12
-    - `<sample>_<tier>.annotated.gtf` — GFFcompare annotated GTF
+  - `gff/`: GFF3 files
+    - `<sample>_<tier>.gff3`: GFF3 derived from BED12
+    - `<sample>_<tier>.annotated.gtf`: GFFcompare annotated GTF
 
 </details>
 
-`<tier>` is one of `discovery`, `balanced`, or `high_confidence`.
+`<tier>` is one of `discovery`, `balanced_precision`, `balanced_recall`, or `high_confidence`.
 
 ### Clean TSV format
 
-The clean TSV (`*_clean.tsv`) is the primary output for downstream analysis. It contains one row per main circRNA. Isoform rows — entries with `bsj_id` containing `|iso`, which represent minority-BSJ calls from tools that disagreed on the back-splice junction — are excluded. The full annotated TSV in `annotated/` retains these rows.
+The clean TSV (`*_clean.tsv`) is the primary output for downstream analysis. It contains the same rows as the annotated TSV, including isoform rows (entries with `bsj_id` containing `|iso`, which represent minority-BSJ calls from tools that disagreed on the back-splice junction), with a narrowed column set plus `type`/`supporting_reads` added. `bsj_id` is never stripped of its isoform suffix, so it matches the annotated TSV and BED12 exactly.
 
 | Column               | Description                                                                                      |
 | -------------------- | ------------------------------------------------------------------------------------------------ |
@@ -300,6 +290,7 @@ The clean TSV (`*_clean.tsv`) is the primary output for downstream analysis. It 
 | `ref_gene_id`        | Reference gene ID from the GTF (`.` if intergenic)                                              |
 | `type`               | circRNA biotype: `eciRNA`, `EIciRNA`, `ciRNA`, `antisense`, or `intergenic` (see below)         |
 | `supporting_reads`   | Read count from the highest-priority active tool (priority: isoCirc > CIRI-long > CircFL-seq > circnick-lrs) |
+| `supporting_tools`   | Comma-joined names of every tool that called this locus (e.g. `isocirc,cirilong`). For a crossrun clean TSV, this is the union across every contributing sample's matched row. |
 
 #### circRNA type classification
 
@@ -317,15 +308,27 @@ Types are assigned by intersecting BSJ coordinates against gene and exon BED fil
 
 ## Cross-run merge
 
-When `--run_crossrun_merge true` is set and the samplesheet contains a `group` column, all samples sharing the same group are merged together after per-sample analysis. Each run is treated as an independent caller — the same `consensus_hybrid` algorithm and confidence scoring used within a sample (across tools) is applied across runs (across samples).
+When `--run_crossrun_merge true` is set and the samplesheet contains a `group` column, all samples sharing the same group are merged together after per-sample analysis. Each run is treated as an independent caller. The same `consensus_hybrid` algorithm and confidence scoring used within a sample (across tools) is applied across runs (across samples).
 
-In plain terms, the three tiers mean:
+In plain terms, the four tiers mean:
 
 | Tier              | What it takes to be retained |
 | ----------------- | ----------------------------- |
-| **`discovery`**   | Detected by **at least 1 tool** in **at least 1 run** — maximum sensitivity, use for exploration |
-| **`balanced`**    | **Multiple tools agreed** within a run AND **multiple runs** support it — recommended for most analyses |
-| **`high_confidence`** | **All tools agreed** within runs AND **most/all runs** support it — maximum precision, lowest false positive rate |
+| **`discovery`**   | Detected by **at least 1 tool** in **at least 1 run**: maximum sensitivity, use for exploration, understanding it has the highest FP rate of all modes |
+| **`balanced_precision`** | **Multiple tools agreed** within a run AND **multiple runs** support it: recommended for precision leaning analyses |
+| **`balanced_recall`** | **Multiple tools agreed** within a run AND **multiple runs** support it: recommended for recall leaning analyses |
+| **`high_confidence`** | **All tools agreed** within runs AND **most/all runs** support it: maximum precision, lowest false positive rate |
+
+### How cross-run merge decides a locus
+
+Each candidate locus is scored with two separate votes, run independently:
+
+1. **BSJ vote**: counts how many different runs support the exact back-splice junction position, regardless of exon structure. This vote decides which tier a locus qualifies for (the count thresholds above).
+2. **Structure vote**: restricted to records at the winning BSJ position only, groups them by exon structure and ranks groups by total tool agreement. This vote decides the final isoform structure reported for the locus.
+
+Splitting these two votes avoids a locus's correct BSJ call being discarded just because a different run happened to report a slightly different exon structure at the same junction.
+
+A structure seen in only 1 run is dropped from the structure vote unless that run's own tool agreement meets `--circrna_crossrun_min_corroboration` (default `2`); structures backed by 2 or more runs are never dropped by this check. This removes weak, single-run structure calls without changing which tier the underlying BSJ qualifies for. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry rather than being merged away.
 
 ### Output files
 
@@ -333,13 +336,13 @@ In plain terms, the three tiers mean:
 <summary>Output files</summary>
 
 - `circrna/<group>/crossrun/`
-  - `<group>_<tier>_crossrun.bed12` — Merged BED12 filtered to the tier threshold
-  - `<group>_<tier>_crossrun_confidence.tsv` — Full intermediate TSV: all merged circRNAs with per-sample BSJ and isoform consensus columns
-  - `<group>_<tier>_crossrun_clean.tsv` — Wet-lab-friendly TSV: filtered circRNAs with type classification (see [Clean TSV format](#clean-tsv-format))
+  - `<group>_<tier>_crossrun.bed12`: Merged BED12 filtered to the tier threshold
+  - `<group>_<tier>_crossrun_confidence.tsv`: Full intermediate TSV: all merged circRNAs with per-sample BSJ and isoform consensus columns
+  - `<group>_<tier>_crossrun_clean.tsv`: Wet-lab-friendly TSV: filtered circRNAs with type classification (see [Clean TSV format](#clean-tsv-format))
 
 </details>
 
-`<tier>` is one of `discovery`, `balanced`, or `high_confidence`. `<group>` is the group name from the samplesheet.
+`<tier>` is one of `discovery`, `balanced_precision`, `balanced_recall`, or `high_confidence`. `<group>` is the group name from the samplesheet.
 
 ### Count thresholds
 
@@ -348,7 +351,8 @@ Minimum number of runs that must detect a circRNA for it to be retained, where `
 | Tier              | Minimum runs required        |
 | ----------------- | ---------------------------- |
 | `discovery`       | ≥ 1 (all circRNAs retained)  |
-| `balanced`        | ≥ max(2, ceil(0.25 × n))     |
+| `balanced_precision` | ≥ max(2, ceil(0.25 × n))  |
+| `balanced_recall` | ≥ max(2, ceil(0.25 × n))     |
 | `high_confidence` | ≥ ceil(0.75 × n)             |
 
 ### Cross-run confidence TSV format
@@ -364,15 +368,63 @@ The `*_crossrun_confidence.tsv` has the same core columns as the per-sample conf
 
 ---
 
+## Quantification
+
+When `--run_quantify true` is set, each sample's reads are remapped against a set of synthetic tandem-duplicated circle references built from a `discovery` (unfiltered, hybrid-consensus) locus catalog: a chunked remap-and-classify pass (tier1), an overlap-cluster rescue pass, then targeted low-coverage rescue (tier2) and gene-family/repeat-cluster rescue (tier3) for loci tier1 handled poorly.
+
+**Which catalog a sample is quantified against depends on `--run_crossrun_merge`:**
+
+- **Off**: each sample is quantified against its own per-sample `discovery` catalog.
+- **On**: every sample in the same samplesheet `group` is quantified against **one shared catalog** built from that group's crossrun `discovery` output, so per-locus counts line up across samples in the group (needed for any downstream count-matrix comparison, e.g. differential expression). The circle references, chunk references, and gene-family similarity database are built once per group, not once per sample; only the actual read alignment/classification is per sample.
+
+Quantification counts are also appended onto each sample's per-tier clean TSV (`circrna_clean.py`/`crossrun_annotate.py` output) as three new columns, producing a `_clean_with_counts.tsv` table:
+
+| Column                           | Description                                                              |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `nanocirc_quant_reads`           | Final read count for this locus (0 if quantification found no count)     |
+| `nanocirc_quant_tier`            | Which stage produced the count: `tier1`, `tier2`, `tier3`, or `tier1_gene_family_unresolved` |
+| `nanocirc_quant_low_confidence`  | `true` for gene-family/repeat-cluster loci tier3 could not resolve further |
+
+The `discovery` and `balanced_recall` tiers then go through a confidence filter (`FILTER_CONFIDENT_DISCOVERY`) that drops two low-confidence patterns with weak read support:
+
+- Loci only CircNick-LRS called (`supporting_tools` is just `circnick`), with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
+- Intergenic or antisense loci supported by only one tool, with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
+
+`balanced_precision` and `high_confidence` are not touched by this filter; their own stricter multi-tool consensus rules already exclude this pattern. The filter drops rows from both the `_clean_with_counts.tsv` table and the tier's BED12, so they stay consistent.
+
+<details markdown="1">
+<summary>Output files</summary>
+
+- `circrna/<sample>/quantify/`
+  - `<sample>_<tier>_clean_with_counts.tsv`: clean TSV with quantification columns appended (see above), and (for `discovery`/`balanced_recall`) the confidence filter applied
+  - `<sample>_<tier>.bed12`: matching BED12, same filtering applied
+
+</details>
+
+All intermediate quantification files (reference chunks, genome-wide alignments, the similarity database, per-tier raw counts) are internal to each task's work directory and are not published.
+
+Quantification-specific parameters:
+
+| Parameter                       | Description                                                              | Default |
+| -------------------------------- | ------------------------------------------------------------------------ | ------- |
+| `--run_quantify`                 | Enable quantification                                                     | `false` |
+| `--quant_chunk_size`             | Loci per reference chunk for tier1                                       | `100`   |
+| `--quant_chunk_seed`             | Fixed shuffle seed for chunk assignment                                  | `42`    |
+| `--quant_locus_dedup_tolerance`  | bp tolerance (both start AND end) for near-duplicate locus dedup         | `10`    |
+| `--quant_min_old_tool_count`     | Min independent old-tool-count to flag a locus for tier2 rescue          | `50`    |
+| `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced_recall confidence filter (see above) | `2` |
+
+---
+
 ## MultiQC
 
 <details markdown="1">
 <summary>Output files</summary>
 
 - `multiqc/`
-  - `multiqc_report.html` — Standalone HTML report viewable in any browser
-  - `multiqc_data/` — Parsed statistics from all tools
-  - `multiqc_plots/` — Static plot images
+  - `multiqc_report.html`: Standalone HTML report viewable in any browser
+  - `multiqc_data/`: Parsed statistics from all tools
+  - `multiqc_plots/`: Static plot images
 
 </details>
 
@@ -386,11 +438,11 @@ The `*_crossrun_confidence.tsv` has the same core columns as the per-sample conf
 <summary>Output files</summary>
 
 - `pipeline_info/`
-  - `execution_report_*.html` — Nextflow execution report (resource usage per process)
-  - `execution_timeline_*.html` — Timeline of all processes
-  - `execution_trace_*.txt` — Raw trace file with per-task metrics
-  - `pipeline_dag_*.html` — Directed acyclic graph of the pipeline
-  - `nf_core_nanocirc_software_mqc_versions.yml` — Software versions for all tools
+  - `execution_report_*.html`: Nextflow execution report (resource usage per process)
+  - `execution_timeline_*.html`: Timeline of all processes
+  - `execution_trace_*.txt`: Raw trace file with per-task metrics
+  - `pipeline_dag_*.html`: Directed acyclic graph of the pipeline
+  - `nf_core_nanocirc_software_mqc_versions.yml`: Software versions for all tools
 
 </details>
 

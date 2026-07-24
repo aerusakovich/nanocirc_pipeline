@@ -5,17 +5,20 @@ crossrun_annotate.py
 Reads the raw cross-run hybrid confidence TSV (output of add_isoform_confidence)
 and writes two output files:
 
-  <prefix>_confidence.tsv  — full intermediate: all columns from smart_merge,
+  <prefix>_confidence.tsv  : full intermediate, all columns from smart_merge,
                               plus n_samples, per-sample bsj/isoform consensus,
                               and circRNA type.
 
-  <prefix>_clean.tsv       — wet-lab-friendly: only the essential columns,
+  <prefix>_clean.tsv       : wet-lab-friendly, only the essential columns,
                               rows filtered to bsj_confidence >= min_count.
-                              Includes per-sample bsj/isoform consensus and,
+                              Includes per-sample bsj/isoform consensus,
+                              supporting_tools (union, across every contributing
+                              sample's own confidence TSV, of which of the 4 native
+                              tools independently called this locus), and,
                               when --sample_expr_files is given, per-sample
                               supporting_reads from the per-sample clean TSVs.
 
-  <prefix>.bed12           — BED12 filtered to match <prefix>_clean.tsv.
+  <prefix>.bed12           : BED12 filtered to match <prefix>_clean.tsv.
 
 Usage:
     crossrun_annotate.py \\
@@ -41,8 +44,10 @@ CLEAN_COLUMNS = [
     '#chrom', 'start', 'end', 'strand',
     'sel_block_count', 'sel_block_sizes', 'sel_block_starts',
     'bsj_id', 'bsj_confidence', 'isoform_confidence', 'n_samples',
-    'type',
+    'type', 'supporting_tools',
 ]
+
+TOOL_PRESENCE_COLUMNS = ['isocirc', 'circfl', 'circnick', 'cirilong']
 
 
 def parse_args():
@@ -73,7 +78,9 @@ def parse_bsj_id(bsj_id):
 
 
 def load_sample_index(tsv_path):
-    """Return {(chrom, strand): [(start, end, bsj_consensus, isoform_consensus)]}."""
+    """Return {(chrom, strand): [(start, end, bsj_consensus, isoform_consensus, tools_present)]}.
+    tools_present: frozenset of TOOL_PRESENCE_COLUMNS names flagged on this sample's own row
+    (present directly on the per-sample confidence TSV, from add_isoform_confidence.py)."""
     index = defaultdict(list)
     try:
         with open(tsv_path) as fh:
@@ -82,10 +89,12 @@ def load_sample_index(tsv_path):
                 if parsed is None:
                     continue
                 chrom, start, end, strand = parsed
+                tools_present = frozenset(t for t in TOOL_PRESENCE_COLUMNS if row.get(t) in ('1', 1, True))
                 index[(chrom, strand)].append((
                     start, end,
                     row.get('bsj_consensus', ''),
                     row.get('isoform_consensus', ''),
+                    tools_present,
                 ))
     except FileNotFoundError:
         pass
@@ -116,12 +125,12 @@ def load_expr_index(tsv_path):
 def lookup(index, bsj_id, bsj_tol):
     parsed = parse_bsj_id(bsj_id)
     if parsed is None:
-        return '', ''
+        return '', '', frozenset()
     chrom, cs, ce, strand = parsed
-    for ss, se, bc, ic in index.get((chrom, strand), []):
+    for ss, se, bc, ic, tools_present in index.get((chrom, strand), []):
         if abs(ss - cs) <= bsj_tol and abs(se - ce) <= bsj_tol:
-            return bc, ic
-    return '', ''
+            return bc, ic, tools_present
+    return '', '', frozenset()
 
 
 def lookup_expr(index, bsj_id, bsj_tol):
@@ -149,11 +158,11 @@ def classify_types(rows, gene_bed, exon_bed):
     are computed in Python from the returned overlap length divided by spliced length,
     avoiding the bedtools -f/-F fraction bug with -split.
 
-      eciRNA     — same-strand gene; exon overlap covers 100% of spliced length
-      EIciRNA    — same-strand gene; partial exon overlap (retains intronic content)
-      ciRNA      — same-strand gene; no exon overlap (purely intronic)
-      antisense  — opposite-strand gene overlap only
-      intergenic — no gene overlap on either strand
+      eciRNA     : same-strand gene; exon overlap covers 100% of spliced length
+      EIciRNA    : same-strand gene; partial exon overlap (retains intronic content)
+      ciRNA      : same-strand gene; no exon overlap (purely intronic)
+      antisense  : opposite-strand gene overlap only
+      intergenic : no gene overlap on either strand
 
     Returns {bsj_id: type_string}.
     """
@@ -274,13 +283,16 @@ def main():
             bsj_id = row.get('bsj_id', '').split('|')[0]
             row['n_samples'] = row.get('bsj_confidence', '')
             row['type']      = types.get(bsj_id, '')
+            all_tools_present = set()
             for name in args.sample_names:
-                bc, ic = lookup(sample_indexes[name], bsj_id, args.bsj_tol)
+                bc, ic, tools_present = lookup(sample_indexes[name], bsj_id, args.bsj_tol)
                 row[f'{name}_bsj_consensus']     = bc
                 row[f'{name}_isoform_consensus'] = ic
+                all_tools_present |= tools_present
                 if expr_indexes:
                     row[f'{name}_expression'] = lookup_expr(
                         expr_indexes.get(name, {}), bsj_id, args.bsj_tol)
+            row['supporting_tools'] = ','.join(t for t in TOOL_PRESENCE_COLUMNS if t in all_tools_present)
 
             full_w.writerow(row)
 

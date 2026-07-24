@@ -29,7 +29,7 @@ process CIRCFL_SEQ {
     """
     export PYTHONNOUSERSITE=1
 
-    # Decompress inline if needed — circfull requires plain FASTQ
+    # Decompress inline if needed, circfull requires plain FASTQ
     ${is_gz ? "gunzip -c ${fastq} > input.fastq" : "ln -sf ${fastq} input.fastq"}
 
     # Sort and index GTF
@@ -58,14 +58,14 @@ process CIRCFL_SEQ {
         -g ${fasta} \\
         -a anno.gtf.gz \\
         -t ${task.cpus} \\
-        -o ${out} || echo "[WARN] cRG found no circRNAs — will attempt mRG fallback"
+        -o ${out} || echo "[WARN] cRG found no circRNAs, will attempt mRG fallback"
 
     circfull mRG \\
         -f input.fastq \\
         -g ${fasta} \\
         -r ${out} \\
         -c ${out} \\
-        -o ${out} || echo "[WARN] mRG failed — will fall back to RG results"
+        -o ${out} || echo "[WARN] mRG failed, will fall back to RG results"
 
     # Determine best available pass files (mRG preferred, RG as fallback)
     if [ -s "${out}/mRG/circFL_Normal_pass.bed" ]; then

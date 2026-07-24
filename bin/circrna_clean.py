@@ -5,20 +5,26 @@ circrna_clean.py
 Produces a clean, wet-lab-friendly TSV from an annotated circRNA confidence TSV
 (output of add_class_codes.py).
 
-Adds two columns that are not in the annotated TSV:
-  type        — eciRNA | EIciRNA | ciRNA | antisense | intergenic
-                (bedtools intersect against gene/exon BED files derived from GTF)
-  expression  — read count, priority: isocirc > ciri-long > circfl > circnick
+Adds three columns that are not in the annotated TSV:
+  type              : eciRNA | EIciRNA | ciRNA | antisense | intergenic
+                      (bedtools intersect against gene/exon BED files derived from GTF)
+  expression        : read count, priority order isocirc, ciri-long, circfl, circnick
+  supporting_tools  : comma-joined tool names whose own presence flag (isocirc,
+                      circfl, circnick, cirilong, already in the annotated TSV from
+                      add_isoform_confidence.py) is set for this row
 
 Clean TSV columns:
   #chrom, start, end, strand,
   sel_block_count, sel_block_sizes, sel_block_starts,
   bsj_id, bsj_confidence, isoform_confidence,
   class_code, ref_gene_id,
-  type, expression
+  type, expression, supporting_tools
 
-Isoform rows (bsj_id containing '|iso') are excluded — clean TSV shows main
-circRNAs only.  The full annotated TSV (with isoforms) remains unmodified.
+Isoform rows (bsj_id containing '|iso') are included alongside main
+circRNAs. The clean TSV carries the same rows as the annotated TSV, just
+with type/expression added and column set narrowed. bsj_id is never stripped of
+its isoform suffix, so downstream joins on bsj_id (e.g. quant_append_counts.py)
+see the same isoform-suffixed ids as the annotated TSV and BED12.
 
 Usage:
     circrna_clean.py \\
@@ -46,7 +52,15 @@ CLEAN_COLUMNS = [
     'class_code', 'ref_gene_id',
     'type',
     'supporting_reads',
+    'supporting_tools',
 ]
+
+TOOL_PRESENCE_COLUMNS = ['isocirc', 'circfl', 'circnick', 'cirilong']
+
+
+def supporting_tools(row) -> str:
+    """Comma-joined tool names with a truthy presence flag on this row."""
+    return ','.join(t for t in TOOL_PRESENCE_COLUMNS if row.get(t) in ('1', 1, True))
 
 
 def parse_args():
@@ -85,7 +99,7 @@ def _lookup(idx, chrom, start, end, strand, tol):
 
 
 def load_iso_expr(path):
-    """isocirc.out — no header; chrom=col2, start=col3 (0-based BED), end=col4, expr=NF-1."""
+    """isocirc.out, no header; chrom=col2, start=col3 (0-based BED), end=col4, expr=NF-1."""
     entries = []
     if not path or not os.path.isfile(path):
         return {}
@@ -109,7 +123,7 @@ def load_iso_expr(path):
 
 
 def load_ciri_expr(path):
-    """CIRI-long.expression — header row 1; col1=coord (chrom:start-end, 1-based), col2=expr."""
+    """CIRI-long.expression, header row 1; col1=coord (chrom:start-end, 1-based), col2=expr."""
     entries = []
     if not path or not os.path.isfile(path):
         return {}
@@ -135,7 +149,7 @@ def load_ciri_expr(path):
 
 
 def load_circfl_expr(path):
-    """circfl_pass.txt — header row 1; chr=col3, start=col4 (1-based), end=col5, readCount=col17."""
+    """circfl_pass.txt, header row 1; chr=col3, start=col4 (1-based), end=col5, readCount=col17."""
     entries = []
     if not path or not os.path.isfile(path):
         return {}
@@ -158,7 +172,7 @@ def load_circfl_expr(path):
 
 
 def load_nick_expr(path):
-    """circRNA_candidates.annotated.txt — header row 1; chrom=col2, start=col3 (0-based), end=col4, count=col6."""
+    """circRNA_candidates.annotated.txt, header row 1; chrom=col2, start=col3 (0-based), end=col4, count=col6."""
     entries = []
     if not path or not os.path.isfile(path):
         return {}
@@ -202,14 +216,14 @@ def classify_types(rows, gene_bed, exon_bed):
 
     Uses bedtools intersect -split -wo on BED12 circRNA records to get the actual
     block-aware overlap length (last column), then computes overlap / spliced_length
-    in Python — avoiding the bedtools -f/-F fraction bug where fractions are computed
+    in Python. This avoids the bedtools -f/-F fraction bug where fractions are computed
     against the original unsplit feature length rather than individual block lengths.
 
-      eciRNA     — same-strand gene; exon overlap covers 100% of spliced length
-      EIciRNA    — same-strand gene; exon overlap is partial (retains intronic content)
-      ciRNA      — same-strand gene; no exon overlap (purely intronic)
-      antisense  — overlaps a gene on the opposite strand only
-      intergenic — no gene overlap on either strand
+      eciRNA     : same-strand gene; exon overlap covers 100% of spliced length
+      EIciRNA    : same-strand gene; exon overlap is partial (retains intronic content)
+      ciRNA      : same-strand gene; no exon overlap (purely intronic)
+      antisense  : overlaps a gene on the opposite strand only
+      intergenic : no gene overlap on either strand
 
     Returns {bsj_id: type_string}.
     """
@@ -325,6 +339,7 @@ def main():
                 chrom, start, end, strand, args.bsj_tol,
                 iso_idx, ciri_idx, circfl_idx, nick_idx
             )
+            row['supporting_tools'] = supporting_tools(row)
             writer.writerow(row)
 
 

@@ -12,7 +12,7 @@
  *   used to build unique file prefixes and publish paths.
  *
  * Versions: all nf-core modules here use `topic: versions` and are collected
- * automatically by Channel.topic("versions") in the main workflow — no manual
+ * automatically by Channel.topic("versions") in the main workflow. No manual
  * ch_versions propagation is needed or correct for these modules.
  */
 

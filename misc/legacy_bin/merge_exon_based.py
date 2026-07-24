@@ -192,7 +192,7 @@ def compute_group_scores(group, nodes_with_isoform, node_pair_fracs, n_active):
     # component 1: percentage of active tools detecting this group, binned 1-4
     bsj_score = count_to_score(len(tools_in_group), n_active)
 
-    # component 2: percentage of active tools with isoform support — min 1
+    # component 2: percentage of active tools with isoform support, min 1
     tools_with_isoform = set()
     for tool_name, coord_list in group.items():
         for coords in coord_list:
@@ -202,7 +202,7 @@ def compute_group_scores(group, nodes_with_isoform, node_pair_fracs, n_active):
     isoform_confidence = len(tools_with_isoform)
     isoform_score      = max(1, count_to_score(isoform_confidence, n_active))
 
-    # component 3: avg pairwise fraction — 1 if no pairs
+    # component 3: avg pairwise fraction, 1 if no pairs
     all_fracs = []
     for tool_name, coord_list in group.items():
         for coords in coord_list:

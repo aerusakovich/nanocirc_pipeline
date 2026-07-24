@@ -162,6 +162,18 @@
                     "description": "Minimum reciprocal spliced-length overlap fraction for isoform confidence scoring.",
                     "fa_icon": "fas fa-percentage"
                 },
+                "circrna_confident_min_reads": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Discovery/balanced_recall confidence filter: drop CircNick-LRS-only loci and intergenic/antisense-classified single-tool-supported loci at or below this many quantified reads.",
+                    "fa_icon": "fas fa-filter"
+                },
+                "circrna_crossrun_min_corroboration": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "Cross-run merge structure-vote corroboration bar: drop a structure backed by only 1 run unless that run's own tool-agreement (struct_agree_count) meets this threshold. Structures backed by >=2 runs are never dropped by this check.",
+                    "fa_icon": "fas fa-filter"
+                },
                 "run_crossrun_merge": {
                     "type": "boolean",
                     "default": false,
@@ -174,6 +186,44 @@
                     "hidden": true,
                     "description": "Also publish all research variants: legacy strict/relaxed/exon merge modes plus raw xstruct, priority, and all trusted-only/no-low combinations.",
                     "fa_icon": "fas fa-flask"
+                }
+            }
+        },
+        "quantification_options": {
+            "title": "Quantification options",
+            "type": "object",
+            "fa_icon": "fas fa-calculator",
+            "description": "Options for remap-based circRNA read quantification, per sample against that sample's own discovery catalog.",
+            "properties": {
+                "run_quantify": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable remap-based circRNA read quantification (tiered chunked-remap + overlap-cluster + gene-family rescue).",
+                    "fa_icon": "fas fa-calculator"
+                },
+                "quant_chunk_size": {
+                    "type": "integer",
+                    "default": 100,
+                    "description": "Number of loci per reference chunk for tier1 chunked remap-and-classify.",
+                    "fa_icon": "fas fa-th"
+                },
+                "quant_chunk_seed": {
+                    "type": "integer",
+                    "default": 42,
+                    "description": "Fixed random seed for the shuffle used to assign loci to chunks (reproducibility).",
+                    "fa_icon": "fas fa-dice"
+                },
+                "quant_locus_dedup_tolerance": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "bp tolerance (both start AND end) for collapsing near-duplicate loci before building remap references.",
+                    "fa_icon": "fas fa-ruler"
+                },
+                "quant_min_old_tool_count": {
+                    "type": "number",
+                    "default": 50,
+                    "description": "Minimum independent old-tool read-ID-union count required to flag a locus for tier2 targeted rescue.",
+                    "fa_icon": "fas fa-flag"
                 }
             }
         },
@@ -385,6 +435,9 @@
         },
         {
             "$ref": "#/$defs/merge_options"
+        },
+        {
+            "$ref": "#/$defs/quantification_options"
         },
         {
             "$ref": "#/$defs/qc_options"

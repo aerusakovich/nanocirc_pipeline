@@ -19,6 +19,7 @@ process CIRI_LONG {
     tuple val(meta), path("${meta.id}_cirilong/${meta.id}.info"),         emit: info
     tuple val(meta), path("${meta.id}_cirilong/${meta.id}.isoforms"),     emit: isoforms
     tuple val(meta), path("${meta.id}_cirilong/${meta.id}.expression", optional: true),   emit: expr
+    tuple val(meta), path("${meta.id}_cirilong/${meta.id}.reads", optional: true),        emit: reads
     tuple val(meta), path("${meta.id}_cirilong/"),                        emit: output_dir
     path  "versions.yml",                                                 emit: versions
 
@@ -32,7 +33,7 @@ process CIRI_LONG {
     mkdir -p ${out}
 
     # CIRI-long requires the -c file to:
-    #   (a) have a .bed suffix — it checks circ_path.suffix == ".bed"
+    #   (a) have a .bed suffix, it checks circ_path.suffix == ".bed"
     #   (b) be BED4: chrom  start  end  strand  (col[3] is read as strand)
     # Sanitise whatever format was passed: strip to BED4 and force .bed extension.
     python3 - <<'PYEOF'
@@ -60,7 +61,7 @@ process CIRI_LONG {
             n_ccs=\$(grep -c '^>' "\$ccs" || true)
             n_raw=\$(grep -c '^>' "\$raw" || true)
             if [ "\$n_ccs" != "\$n_raw" ]; then
-                echo "[ciri_long] tmp mismatch (ccs=\$n_ccs raw=\$n_raw) — removing to force fresh extraction"
+                echo "[ciri_long] tmp mismatch (ccs=\$n_ccs raw=\$n_raw), removing to force fresh extraction"
                 rm -f "\$ccs" "\$raw"
             fi
         fi

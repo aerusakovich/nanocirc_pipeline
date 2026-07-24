@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-liftover_bed.py — BED4 liftover using the Python liftover library.
+liftover_bed.py: BED4 liftover using the Python liftover library.
 Argument order matches UCSC liftOver: input.bed chain output.bed unmapped.bed
 """
 import sys
