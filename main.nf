@@ -1,11 +1,11 @@
 #!/usr/bin/env nextflow
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    nf-core/nanocirc
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    Github : https://github.com/nf-core/nanocirc
-    Website: https://nf-co.re/nanocirc
-    Slack  : https://nfcore.slack.com/channels/nanocirc
+    nanocirc
+    Long-read circRNA annotation and quantification pipeline
+    Github : https://github.com/aerusakovich/nf_nanocirc_long_read
+
+    Built from the nf-core pipeline template (https://nf-co.re).
 ----------------------------------------------------------------------------------------
 */
 
@@ -26,25 +26,6 @@ include { getGenomeAttribute      } from './subworkflows/local/utils_nfcore_nano
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 
-//
-// WORKFLOW: Run main analysis pipeline depending on type of input
-//
-workflow NFCORE_NANOCIRC {
-
-    take:
-    samplesheet // channel: samplesheet read in from --input
-
-    main:
-
-    //
-    // WORKFLOW: Run pipeline
-    //
-    NANOCIRC (
-        samplesheet
-    )
-    emit:
-    multiqc_report = NANOCIRC.out.multiqc_report // channel: /path/to/multiqc_report.html
-}
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -56,15 +37,8 @@ workflow {
     main:
     params.fasta = getGenomeAttribute('fasta')
 
-    // Nextflow v2 strict parser delivers all CLI params as strings. A prior
-    // version of this block tried to coerce them here via params[p] =
-    // params[p].toBoolean(), but that does not work: Nextflow keeps
-    // returning the original CLI string on every later read of params.X
-    // regardless of this reassignment (the CLI-supplied value always wins),
-    // confirmed with a minimal repro script. Each consuming file now reads
-    // and coerces its own boolean params once into local variables instead
-    // (see asBool() in workflows/nanocirc.nf and
-    // subworkflows/local/circrna_analysis.nf).
+    // Boolean params are coerced per-consumer via asBool() (workflows/nanocirc.nf,
+    // subworkflows/local/circrna_analysis.nf), not here.
 
     //
     // SUBWORKFLOW: Run initialisation tasks
@@ -84,7 +58,7 @@ workflow {
     //
     // WORKFLOW: Run main workflow
     //
-    NFCORE_NANOCIRC (
+    NANOCIRC (
         PIPELINE_INITIALISATION.out.samplesheet
     )
     //
@@ -97,7 +71,7 @@ workflow {
         params.outdir,
         params.monochrome_logs,
         params.hook_url,
-        NFCORE_NANOCIRC.out.multiqc_report
+        NANOCIRC.out.multiqc_report
     )
 }
 

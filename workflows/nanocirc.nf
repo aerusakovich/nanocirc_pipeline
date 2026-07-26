@@ -227,11 +227,11 @@ workflow NANOCIRC {
         }
 
         def ch_for_confident_filter = QUANT_APPEND_COUNTS.out.clean
-            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_recall'] }
+            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_recall', 'high_confidence'] }
             .map    { meta, tsv -> [[meta.id, meta.category], meta, tsv] }
             .combine(
                 ch_bed_for_quant
-                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced_recall'] }
+                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced_recall', 'high_confidence'] }
                     .map    { meta, bed -> [[meta.id, meta.category], bed] },
                 by: 0
             )

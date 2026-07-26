@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/nf-core-nanocirc_logo_dark.png">
-    <img alt="nf-core/nanocirc" src="docs/images/nf-core-nanocirc_logo_light.png">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/nanocirc-logo-dark.png">
+    <img alt="nanocirc" src="docs/images/nanocirc-logo-light.png">
   </picture>
 </h1>
 
@@ -12,13 +12,13 @@
 
 ## Introduction
 
-**nf-core/nanocirc** is a bioinformatics pipeline for the detection and characterisation of circular RNAs (circRNAs) from long-read nanopore sequencing data. It runs up to four detection tools with different algorithms in parallel, converts their outputs to a unified BED12 format, and merges results across tools with consensus confidence scoring.
+**nanocirc** is a bioinformatics pipeline for the detection and characterisation of circular RNAs (circRNAs) from long-read nanopore sequencing data. It runs up to four detection tools with different algorithms in parallel, converts their outputs to a unified BED12 format, and merges results across tools with consensus confidence scoring.
 
 The pipeline is designed for researchers who want to maximise circRNA detection sensitivity by combining complementary tools, and to obtain a ranked, confidence-scored list of circRNA candidates supported by multiple independent methods.
 
 ## Pipeline overview
 
-<img src="https://github.com/user-attachments/assets/cd252a9c-1d78-4556-9bf8-c140e39f0f5f" width="100%"/>
+<img src="docs/images/pipeline_art.png" width="100%"/>
 
 The pipeline runs the following steps:
 
@@ -38,7 +38,7 @@ The pipeline runs the following steps:
 ## Quick start
 
 > [!NOTE]
-> If you are new to Nextflow and nf-core, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set up Nextflow. Make sure to [test your setup](https://nf-co.re/docs/usage/introduction#how-to-run-a-pipeline) with `-profile test` before running the workflow on actual data.
+> If you are new to Nextflow, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set it up. Make sure to test your setup with `-profile test` before running the workflow on actual data. That profile uses a small bundled chr21-only dataset, so it runs in a few minutes.
 
 ### 1. Prepare a samplesheet
 
@@ -53,7 +53,7 @@ SAMPLE2,/path/to/sample2.fastq.gz
 ### 2. Run the pipeline
 
 ```bash
-nextflow run nf-core/nanocirc \
+nextflow run aerusakovich/nf_nanocirc_long_read \
     -profile singularity \
     --input     samplesheet.csv \
     --outdir    results/ \
@@ -66,7 +66,7 @@ nextflow run nf-core/nanocirc \
 > [!WARNING]
 > Provide pipeline parameters via the CLI or a `-params-file`. Custom config files (`-c`) should only be used for resource tuning, not parameters.
 
-For full parameter documentation see [docs/usage.md](docs/usage.md) or the [nf-core/nanocirc parameters page](https://nf-co.re/nanocirc/parameters).
+For full parameter documentation see [docs/usage.md](docs/usage.md).
 
 ## Key parameters
 
@@ -143,13 +143,13 @@ See [docs/usage.md](docs/usage.md) and [docs/output.md](docs/output.md) for full
 
 ## Credits
 
-nf-core/nanocirc was written by [Anastasia Rusakovich](https://github.com/aerusakovich).
+nanocirc was written by [Anastasia Rusakovich](https://github.com/aerusakovich).
 
 The pipeline builds on the [nf-core](https://nf-co.re) framework and uses containers from [BioContainers](https://biocontainers.pro/).
 
 ## Citations
 
-If you use nf-core/nanocirc in your research, please cite the tools used:
+If you use nanocirc in your research, please cite the tools used:
 
 - **isoCirc**: Xin, R., Gao, Y., Gao, Y., Wang, R., Kadash-Edmondson, K. E., Liu, B., Wang, Y., Lin, L., & Xing, Y. (2021). isoCirc catalogs full-length circular RNA isoforms in human transcriptomes. Nature Communications, 12(1), 266. https://doi.org/10.1038/s41467-020-20459-8
 - **CircFL-seq**: Liu, Z., Tao, C., Li, S., Du, M., Bai, Y., Hu, X., Li, Y., Chen, J., & Yang, E. (2021). circFL-seq reveals full-length circular RNAs with rolling circular reverse transcription and nanopore sequencing. eLife, 10, e69457. https://doi.org/10.7554/eLife.69457

@@ -1,5 +1,5 @@
 //
-// Subworkflow with functionality specific to the nf-core/nanocirc pipeline
+// Subworkflow with functionality specific to the nanocirc pipeline
 //
 
 /*
@@ -55,13 +55,17 @@ workflow PIPELINE_INITIALISATION {
     // Validate parameters and generate parameter summary to stdout
     //
     def before_text = """
+\033[0;32m                                         .. . .77?               .  . \033[0m
+\033[0;32m .. .::.    :!:   ... :::    .:^~~^.  ^^:!?Y^.^?Y~  .7Y:!?Y!  ^^:!?Y. \033[0m
+\033[0;32m:7^.::!?^   ^77.  :7:::^77:.^.   :77:5!    ..~JJ~.   5P..^P7:5~   ..  \033[0m
+\033[0;32m^7     ~?  :^.77. !~     7!!:     :75B      .G!      BJ!P!  GP        \033[0m
+\033[0;32m~?.    ^! .^:.:7! !!     !~!!:.  .:.7@?.  ..?@?.  ..:&5.~YJ:J&7.  .:  \033[0m
+\033[0;32m.~~.   ~.::     7!:!^   .~ .^!!^:.   ~5Y7~:..JGPY?7^.YG.  ~555PJ!^:.  \033[0m
+\033[0;32m      ^. .      ::     .^                                   ~5PY~.  ..\033[0m
+\033[0;32m    .:.               .:                                      :?G#PJ~.\033[0m
+\033[0;32m   ..                ..                                          ^:    \033[0m
 -\033[2m----------------------------------------------------\033[0m-
-                                        \033[0;32m,--.\033[0;30m/\033[0;32m,-.\033[0m
-\033[0;34m        ___     __   __   __   ___     \033[0;32m/,-._.--~\'\033[0m
-\033[0;34m  |\\ | |__  __ /  ` /  \\ |__) |__         \033[0;33m}  {\033[0m
-\033[0;34m  | \\| |       \\__, \\__/ |  \\ |___     \033[0;32m\\`-._,-`-,\033[0m
-                                        \033[0;32m`._,._,\'\033[0m
-\033[0;35m  nf-core/nanocirc ${workflow.manifest.version}\033[0m
+\033[0;35m  nanocirc ${workflow.manifest.version}\033[0m
 -\033[2m----------------------------------------------------\033[0m-
 """
     def after_text = """${workflow.manifest.doi ? "\n* The pipeline\n" : ""}${workflow.manifest.doi.tokenize(",").collect { doi -> "    https://doi.org/${doi.trim().replace('https://doi.org/','')}"}.join("\n")}${workflow.manifest.doi ? "\n" : ""}
@@ -69,7 +73,7 @@ workflow PIPELINE_INITIALISATION {
     https://doi.org/10.1038/s41587-020-0439-x
 
 * Software dependencies
-    https://github.com/nf-core/nanocirc/blob/master/CITATIONS.md
+    https://github.com/${workflow.manifest.name}/blob/master/CITATIONS.md
 """
     def command = "nextflow run ${workflow.manifest.name} -profile <docker/singularity/.../institute> --input samplesheet.csv --outdir <OUTDIR>"
 

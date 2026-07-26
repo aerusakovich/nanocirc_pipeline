@@ -17,7 +17,7 @@
                         "size": "Large",
                         "weight": "Bolder",
                         "color": "<% if (success) { %>Good<% } else { %>Attention<%} %>",
-                        "text": "nf-core/nanocirc v${version} - ${runName}",
+                        "text": "nanocirc v${version} - ${runName}",
                         "wrap": true
                     },
                     {

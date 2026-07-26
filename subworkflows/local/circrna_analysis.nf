@@ -185,7 +185,7 @@ workflow CIRCRNA_ANALYSIS {
 
     if (ch_n_active < 4) {
         log.warn(
-            "[nf-core/nanocirc] Only ${ch_n_active} of 4 detection tools are active. " +
+            "[${workflow.manifest.name}] Only ${ch_n_active} of 4 detection tools are active. " +
             "Tool consensus scores (Low/Medium/High) reflect agreement among the " +
             "tools that ran. A 'High' score from ${ch_n_active} tools is not " +
             "equivalent to 'High' from all 4 tools."

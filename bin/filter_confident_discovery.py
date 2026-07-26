@@ -17,16 +17,28 @@ against simulated ground truth:
      gene context and no other tool backs these calls).
 
 Both rules need read support at or below --min_reads. A missing
-nanocirc_quant_reads value also fails this check. Applied only to the
-discovery and balanced_recall tiers. balanced_precision and
-high_confidence already exclude this pattern through their own stricter
-multi-tool rules (checked: 0 rows affected there).
+nanocirc_quant_reads value also fails this check. Applied to the
+discovery and balanced_recall tiers. balanced_precision already excludes
+this pattern through its own stricter multi-tool rules (checked: 0 rows
+affected there).
+
+  3. IsoCirc-only calls with weak read support, guarding the
+     high_only_isocirc exception in filter_confidence.py (which lets
+     IsoCirc's own Low-confidence calls into the high_confidence tier).
+     Only applied when --category high_confidence: IsoCirc-only calls
+     are otherwise a strong signal (~0.96-0.97 precision unfiltered, see
+     the balanced_recall per-tool breakdown) and are intentionally left
+     unfiltered on discovery/balanced_recall to avoid re-litigating their
+     already-validated numbers -- this rule exists only to keep
+     high_confidence's near-zero false-positive rate intact now that a
+     Low-confidence door has been opened there for IsoCirc.
 
 Usage:
     filter_confident_discovery.py \\
         --tsv         sample_discovery_clean_with_counts.tsv \\
         --bed         sample_discovery.bed12 \\
         --min_reads   2 \\
+        --category    discovery \\
         --out_tsv     sample_discovery_clean_with_counts.tsv \\
         --out_bed     sample_discovery_clean.bed12
 """
@@ -40,6 +52,7 @@ def parse_args():
     p.add_argument('--tsv',       required=True, help='clean_with_counts.tsv (has type, supporting_tools, nanocirc_quant_reads)')
     p.add_argument('--bed',       required=True, help='matching BED12')
     p.add_argument('--min_reads', type=int, required=True, help='drop candidates at or below this read count (params.circrna_confident_min_reads)')
+    p.add_argument('--category',  default='', help='tier name (meta.category); enables the isocirc-only guard when set to high_confidence')
     p.add_argument('--out_tsv',   required=True, help='output TSV path')
     p.add_argument('--out_bed',   required=True, help='output BED12 path')
     return p.parse_args()
@@ -52,7 +65,7 @@ def weak_read_support(reads_str, min_reads):
         return True  # missing or blank count, treat as unsupported
 
 
-def should_drop(row, min_reads):
+def should_drop(row, min_reads, category=''):
     tools = row.get('supporting_tools', '')
     tool_list = [t for t in tools.split(',') if t]
     n_tools = len(tool_list)
@@ -60,8 +73,9 @@ def should_drop(row, min_reads):
 
     circnick_only = tool_list == ['circnick']
     weak_type_single_tool = row.get('type', '') in WEAK_TYPES and n_tools <= 1
+    isocirc_only_weak = category == 'high_confidence' and tool_list == ['isocirc']
 
-    return low_read and (circnick_only or weak_type_single_tool)
+    return low_read and (circnick_only or weak_type_single_tool or isocirc_only_weak)
 
 
 def main():
@@ -76,7 +90,7 @@ def main():
     kept_ids = set()
     kept_rows = []
     for row in rows:
-        if should_drop(row, args.min_reads):
+        if should_drop(row, args.min_reads, args.category):
             continue
         kept_ids.add(row.get('bsj_id', ''))
         kept_rows.append(row)

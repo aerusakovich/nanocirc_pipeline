@@ -1,8 +1,8 @@
-# nf-core/nanocirc: Usage
+# nanocirc: Usage
 
 ## Introduction
 
-**nf-core/nanocirc** is a pipeline for detection and characterisation of circular RNAs (circRNAs) from long-read nanopore sequencing data. It runs up to four detection tools in parallel, converts their outputs to a unified BED12 format, and merges results with confidence scoring when two or more tools are active.
+**nanocirc** is a pipeline for detection and characterisation of circular RNAs (circRNAs) from long-read nanopore sequencing data. It runs up to four detection tools in parallel, converts their outputs to a unified BED12 format, and merges results with confidence scoring when two or more tools are active.
 
 ## Samplesheet input
 
@@ -32,7 +32,7 @@ Pass the samplesheet to the pipeline with:
 At minimum you need the samplesheet, a reference genome FASTA, a GTF annotation, and at least one detection tool enabled:
 
 ```bash
-nextflow run nf-core/nanocirc \
+nextflow run aerusakovich/nf_nanocirc_long_read \
     -profile singularity \
     --input samplesheet.csv \
     --outdir results/ \
@@ -43,7 +43,7 @@ nextflow run nf-core/nanocirc \
 ### Full example (all four tools)
 
 ```bash
-nextflow run nf-core/nanocirc \
+nextflow run aerusakovich/nf_nanocirc_long_read \
     -profile singularity \
     --input        samplesheet.csv \
     --outdir       results/ \
@@ -66,7 +66,7 @@ nextflow run nf-core/nanocirc \
 Add `-resume` to any command to reuse cached results from a previous run:
 
 ```bash
-nextflow run nf-core/nanocirc ... -resume
+nextflow run aerusakovich/nf_nanocirc_long_read ... -resume
 ```
 
 ### Params file
@@ -74,7 +74,7 @@ nextflow run nf-core/nanocirc ... -resume
 For repeated runs with the same settings, use a params YAML file:
 
 ```bash
-nextflow run nf-core/nanocirc -profile singularity -params-file params.yaml
+nextflow run aerusakovich/nf_nanocirc_long_read -profile singularity -params-file params.yaml
 ```
 
 ```yaml title="params.yaml"
@@ -187,7 +187,7 @@ ctrl2,/data/ctrl2.fq.gz,condition_B
 Then set `--run_crossrun_merge true`:
 
 ```bash
-nextflow run nf-core/nanocirc \
+nextflow run aerusakovich/nf_nanocirc_long_read \
     --input samplesheet.csv \
     --run_crossrun_merge true \
     ...
@@ -235,7 +235,7 @@ After quantification, the `discovery` and `balanced_recall` tiers also go throug
 `balanced_precision` and `high_confidence` are not touched by this filter. Their own stricter multi-tool consensus rules already exclude this pattern.
 
 ```bash
-nextflow run nf-core/nanocirc \
+nextflow run aerusakovich/nf_nanocirc_long_read \
     --input samplesheet.csv \
     --run_quantify true \
     ...
@@ -328,13 +328,13 @@ process {
 Use `screen`, `tmux`, or the Nextflow `-bg` flag to detach the run from your terminal:
 
 ```bash
-nextflow run nf-core/nanocirc ... -bg
+nextflow run aerusakovich/nf_nanocirc_long_read ... -bg
 ```
 
 Alternatively, on HPC systems, submit the Nextflow head job itself to the scheduler:
 
 ```bash
-sbatch --wrap="nextflow run nf-core/nanocirc ..."
+sbatch --wrap="nextflow run aerusakovich/nf_nanocirc_long_read ..."
 ```
 
 ---

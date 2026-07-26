@@ -1,4 +1,4 @@
-# nf-core/nanocirc: Output
+# nanocirc: Output
 
 ## Introduction
 

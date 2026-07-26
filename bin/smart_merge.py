@@ -58,7 +58,7 @@ from collections import defaultdict
 
 
 # ── Priority tables ────────────────────────────────────────────────────────────
-BSJ_PRIORITY    = ['isocirc', 'circfl', 'circnick', 'cirilong']
+BSJ_PRIORITY    = ['isocirc', 'circfl', 'cirilong', 'circnick']
 STRUCT_PRIORITY = ['isocirc', 'circfl', 'cirilong', 'circnick']
 
 

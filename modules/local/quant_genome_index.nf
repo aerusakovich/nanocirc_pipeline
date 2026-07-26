@@ -5,9 +5,9 @@ process QUANT_GENOME_INDEX {
     maxRetries    2
 
     // Cache results, skipped on subsequent runs if the index already exists
-    // here, same pattern as PREPARE_GENOME. Genome-only (no catalog
-    // dependency), so this is the one quant step genuinely shared across
-    // every sample.
+    // here, same pattern as PREPARE_GENOME.
+    // retry: storeDir unstage/verify race (nxf_unstage moves output before
+    // Nextflow's own existence check reads it)
     storeDir "${params.genome_index_dir ?: "${params.outdir}/genome_index"}"
 
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
