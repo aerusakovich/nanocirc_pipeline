@@ -94,7 +94,6 @@ For full parameter documentation see [docs/usage.md](docs/usage.md).
 | `--circnick_liftover_chain` | UCSC chain file for coordinate liftover (optional, but required if provided version of genome differs from h19 or m38, otherwise circNICK-lrs results will be incomparable with other tools) | N/A |
 | `--circrna_bsj_tolerance`   | BSJ coordinate tolerance for relaxed merge (bp)           | `5`     |
 | `--circrna_isoform_overlap` | Min reciprocal spliced-length overlap for isoform scoring | `0.95`  |
-| `--run_benchmark_modes`     | Also publish legacy merge variants and all filtered combinations | `false` |
 | `--run_crossrun_merge`      | Merge circRNA calls across samples sharing a `group`      | `false` |
 | `--crossrun_min_tool_agreement` | Min tool agreement to keep a single-run isoform structure in cross-run merge | `2` |
 | `--run_quantify`            | Enable remap-based circRNA quantification                 | `false` |
@@ -149,6 +148,8 @@ The four output modes filter on these axes:
 | `high_confidence` | High on **both** axes, or Low from IsoCirc if it meets read support threshold|
 
 > **Note:** Scores reflect agreement among the tools that actually ran. A `High` from 2 tools (both agree) is not equivalent to `High` from 4 tools. The pipeline warns when fewer than 4 tools are active.
+
+Not sure which tier fits your analysis? See [docs/benchmark.md](docs/benchmark.md) for what each one trades off, our recommendations, and the benchmark plots behind them.
 
 ## Cross-run merge and quantification
 

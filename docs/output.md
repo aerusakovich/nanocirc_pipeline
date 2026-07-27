@@ -190,7 +190,7 @@ If `--run_quantify true` is also set, `discovery`/`balanced_recall`/`high_confid
 
 #### Additional merge modes (`--run_benchmark_modes`)
 
-Two further algorithms remain available for research and benchmarking only. Both were outperformed by `consensus_hybrid`/`consensus` in benchmark evaluation and are not published by default.
+Two further algorithms were tested and outperformed by `consensus_hybrid`/`consensus` in benchmark evaluation and are not published by default. This exists for internal benchmarking history, not for routine use, and is not maintained.
 
 | Mode | BSJ selection | Structure vote participants | Minority-BSJ rebasing | Minority-BSJ handling |
 | ---- | ------------- | -------------------------- | --------------------- | --------------------- |

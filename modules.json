@@ -1,6 +1,6 @@
 {
-    "name": "nf-core/nanocirc",
-    "homePage": "https://github.com/nf-core/nanocirc",
+    "name": "aerusakovich/nanocirc_pipeline",
+    "homePage": "https://github.com/aerusakovich/nanocirc_pipeline",
     "repos": {
         "https://github.com/nf-core/modules.git": {
             "modules": {

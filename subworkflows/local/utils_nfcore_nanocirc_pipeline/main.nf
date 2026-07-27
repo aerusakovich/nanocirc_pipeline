@@ -213,27 +213,50 @@ def genomeExistsError() {
 // Generate methods description for MultiQC
 //
 def toolCitationText() {
-    // TODO nf-core: Optionally add in-text citation tools to this list.
-    // Can use ternary operators to dynamically construct based conditions, e.g. params["run_xyz"] ? "Tool (Foo et al. 2023)" : "",
-    // Uncomment function in methodsDescriptionText to render in MultiQC report
-    def citation_text = [
-            "Tools used in the workflow included:",
-            "FastQC (Andrews 2010),",
-            "MultiQC (Ewels et al. 2016)",
-            "."
-        ].join(' ').trim()
+    def citations = []
+    citations << (params.skip_fastqc   ? "" : "FastQC (Andrews 2010)")
+    citations << (params.skip_nanoplot ? "" : "NanoPlot (De Coster et al. 2018)")
+    citations << (params.run_isocirc   ? "isoCirc (Xin et al. 2021)"        : "")
+    citations << (params.run_circfl    ? "CircFL-seq (Liu et al. 2021)"     : "")
+    citations << (params.run_cirilong  ? "CIRI-long (Zhang et al. 2021)"    : "")
+    citations << (params.run_circnick  ? "circnick-lrs (Rahimi et al. 2021)" : "")
+    citations << "bedtools (Quinlan & Hall 2010)"
+    citations << (params.run_crossrun_merge ? "pybedtools (Dale et al. 2011)" : "")
+    citations << (params.circnick_liftover_chain ? "UCSC liftOver (Kent et al. 2002)" : "")
+    citations << (params.skip_annotation ? "" : "samtools (Danecek et al. 2021)")
+    citations << (params.skip_annotation ? "" : "GffRead/GffCompare (Pertea & Pertea 2020)")
+    citations << (params.skip_annotation ? "" : "AGAT (Dainat)")
+    citations << (params.run_quantify ? "minimap2 (Li 2018)" : "")
+    citations << (params.run_quantify ? "BLAT (Kent 2002)" : "")
+    citations << (params.run_quantify ? "BWA (Li & Durbin 2009)" : "")
+    citations << (params.skip_multiqc ? "" : "MultiQC (Ewels et al. 2016)")
+
+    def citation_text = "Tools used in the workflow included: " +
+        citations.findAll { it }.join(', ') + "."
 
     return citation_text
 }
 
 def toolBibliographyText() {
-    // TODO nf-core: Optionally add bibliographic entries to this list.
-    // Can use ternary operators to dynamically construct based conditions, e.g. params["run_xyz"] ? "<li>Author (2023) Pub name, Journal, DOI</li>" : "",
-    // Uncomment function in methodsDescriptionText to render in MultiQC report
-    def reference_text = [
-            "<li>Andrews S, (2010) FastQC, URL: https://www.bioinformatics.babraham.ac.uk/projects/fastqc/).</li>",
-            "<li>Ewels, P., Magnusson, M., Lundin, S., & Käller, M. (2016). MultiQC: summarize analysis results for multiple tools and samples in a single report. Bioinformatics , 32(19), 3047–3048. doi: /10.1093/bioinformatics/btw354</li>"
-        ].join(' ').trim()
+    def refs = []
+    refs << (params.skip_fastqc   ? "" : "<li>Andrews S, (2010) FastQC, URL: https://www.bioinformatics.babraham.ac.uk/projects/fastqc/).</li>")
+    refs << (params.skip_nanoplot ? "" : "<li>De Coster W, D'Hert S, Schultz DT, Cruts M, Van Broeckhoven C. NanoPack: visualizing and processing long-read sequencing data. Bioinformatics. 2018;34(15):2666-2669. doi: 10.1093/bioinformatics/bty149</li>")
+    refs << (params.run_isocirc   ? "<li>Xin R, Gao Y, Gao Y, et al. isoCirc catalogs full-length circular RNA isoforms in human transcriptomes. Nat Commun. 2021;12(1):266. doi: 10.1038/s41467-020-20459-8</li>" : "")
+    refs << (params.run_circfl    ? "<li>Liu Z, Tao C, Li S, et al. circFL-seq reveals full-length circular RNAs with rolling circular reverse transcription and nanopore sequencing. eLife. 2021;10:e69457. doi: 10.7554/eLife.69457</li>" : "")
+    refs << (params.run_cirilong  ? "<li>Zhang J, Hou L, Zuo Z, et al. Comprehensive profiling of circular RNAs with nanopore sequencing and CIRI-long. Nat Biotechnol. 2021;39(7):836-845. doi: 10.1038/s41587-021-00842-6</li>" : "")
+    refs << (params.run_circnick  ? "<li>Rahimi K, Venø MT, Dupont DM, Kjems J. Nanopore sequencing of brain-derived full-length circRNAs reveals circRNA-specific exon usage, intron retention and microexons. Nat Commun. 2021;12(1):4825. doi: 10.1038/s41467-021-24975-z</li>" : "")
+    refs << "<li>Quinlan AR, Hall IM. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics. 2010;26(6):841-842. doi: 10.1093/bioinformatics/btq033</li>"
+    refs << (params.run_crossrun_merge ? "<li>Dale RK, Pedersen BS, Quinlan AR. Pybedtools: a flexible Python library for manipulating genomic datasets and annotations. Bioinformatics. 2011;27(24):3423-3424. doi: 10.1093/bioinformatics/btr539</li>" : "")
+    refs << (params.circnick_liftover_chain ? "<li>Kent WJ, Sugnet CW, Furey TS, et al. The human genome browser at UCSC. Genome Res. 2002;12(6):996-1006. doi: 10.1101/gr.229102</li>" : "")
+    refs << (params.skip_annotation ? "" : "<li>Danecek P, Bonfield JK, Liddle J, et al. Twelve years of SAMtools and BCFtools. Gigascience. 2021;10(2):giab008. doi: 10.1093/gigascience/giab008</li>")
+    refs << (params.skip_annotation ? "" : "<li>Pertea G, Pertea M. GFF Utilities: GffRead and GffCompare. F1000Res. 2020;9:ISCB Comm J-304. doi: 10.12688/f1000research.23297.2</li>")
+    refs << (params.skip_annotation ? "" : "<li>Dainat J. AGAT: Another Gff Analysis Toolkit to handle annotations in any GTF/GFF format. Zenodo. doi: 10.5281/zenodo.3552717</li>")
+    refs << (params.run_quantify ? "<li>Li H. Minimap2: pairwise alignment for nucleotide sequences. Bioinformatics. 2018;34(18):3094-3100. doi: 10.1093/bioinformatics/bty191</li>" : "")
+    refs << (params.run_quantify ? "<li>Kent WJ. BLAT-the BLAST-like alignment tool. Genome Res. 2002;12(4):656-664. doi: 10.1101/gr.229202</li>" : "")
+    refs << (params.run_quantify ? "<li>Li H, Durbin R. Fast and accurate short read alignment with Burrows-Wheeler transform. Bioinformatics. 2009;25(14):1754-1760. doi: 10.1093/bioinformatics/btp324</li>" : "")
+    refs << (params.skip_multiqc ? "" : "<li>Ewels P, Magnusson M, Lundin S, Käller M. MultiQC: summarize analysis results for multiple tools and samples in a single report. Bioinformatics. 2016;32(19):3047-3048. doi: 10.1093/bioinformatics/btw354</li>")
+
+    def reference_text = refs.findAll { it }.join(' ')
 
     return reference_text
 }
@@ -259,12 +282,8 @@ def methodsDescriptionText(mqc_methods_yaml) {
     meta["nodoi_text"] = meta.manifest_map.doi ? "" : "<li>If available, make sure to update the text to include the Zenodo DOI of version of the pipeline used. </li>"
 
     // Tool references
-    meta["tool_citations"] = ""
-    meta["tool_bibliography"] = ""
-
-    // TODO nf-core: Only uncomment below if logic in toolCitationText/toolBibliographyText has been filled!
-    // meta["tool_citations"] = toolCitationText().replaceAll(", \\.", ".").replaceAll("\\. \\.", ".").replaceAll(", \\.", ".")
-    // meta["tool_bibliography"] = toolBibliographyText()
+    meta["tool_citations"] = toolCitationText().replaceAll(", \\.", ".").replaceAll("\\. \\.", ".").replaceAll(", \\.", ".")
+    meta["tool_bibliography"] = toolBibliographyText()
 
 
     def methods_text = mqc_methods_yaml.text

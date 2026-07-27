@@ -128,7 +128,6 @@ These options control how results from multiple tools are merged and scored:
 | --------------------------- | ------------------------------------------------------------------------ | ------- |
 | `--circrna_bsj_tolerance`   | BSJ coordinate tolerance in bp for relaxed BSJ grouping during merge    | `5`     |
 | `--circrna_isoform_overlap` | Minimum reciprocal spliced-length overlap for isoform confidence scoring | `0.95`  |
-| `--run_benchmark_modes`     | Also publish raw smart-merge variants and all filtered combinations (for research / benchmarking) | `false` |
 
 Merging is only performed when **two or more** detection tools are active.
 
