@@ -12,6 +12,7 @@ include { CIRCRNA_QUANTIFY        } from '../subworkflows/local/circrna_quantify
 include { QUANT_APPEND_COUNTS     } from '../modules/local/quant_append_counts'
 include { CIRCRNA_CROSSRUN_MERGE  } from '../modules/local/circrna_crossrun_merge'
 include { FILTER_CONFIDENT_DISCOVERY } from '../modules/local/filter_confident_discovery'
+include { BUILD_DESEQ2_MATRIX     } from '../modules/local/build_deseq2_matrix'
 include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -239,6 +240,19 @@ workflow NANOCIRC {
 
         FILTER_CONFIDENT_DISCOVERY ( ch_for_confident_filter )
         ch_versions = ch_versions.mix(FILTER_CONFIDENT_DISCOVERY.out.versions.first())
+
+        // balanced_precision never goes through FILTER_CONFIDENT_DISCOVERY, so
+        // its final clean_with_counts.tsv is still QUANT_APPEND_COUNTS.out.clean
+        def ch_final_clean_with_counts = QUANT_APPEND_COUNTS.out.clean
+            .filter { meta, _tsv -> meta.category == 'balanced_precision' }
+            .mix( FILTER_CONFIDENT_DISCOVERY.out.clean )
+
+        def ch_deseq2_input = ch_final_clean_with_counts
+            .map { meta, tsv -> [meta.category, meta, tsv] }
+            .groupTuple(by: 0)
+
+        BUILD_DESEQ2_MATRIX ( ch_deseq2_input )
+        ch_versions = ch_versions.mix(BUILD_DESEQ2_MATRIX.out.versions)
     }
 
     //

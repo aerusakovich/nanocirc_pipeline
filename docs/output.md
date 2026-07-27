@@ -414,6 +414,20 @@ Quantification-specific parameters:
 | `--quant_min_old_tool_count`     | Min independent old-tool-count to flag a locus for tier2 rescue          | `50`    |
 | `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced_recall confidence filter (see above) | `2` |
 
+### DESeq2 count matrix
+
+When `--run_quantify true` is set, the pipeline also builds one wide isoform x sample count matrix per confidence tier, pooling every sample in the run. A feature row is one isoform: two isoforms sharing a BSJ but with different exon structure get separate rows. Samples quantified against the same crossrun catalog (same `group`, `--run_crossrun_merge true`) already share row identity; samples from different catalogs are unioned, 0-filled where a sample's own catalog never called that isoform.
+
+<details markdown="1">
+<summary>Output files</summary>
+
+- `circrna/deseq2/`
+  - `deseq2_counts_<tier>.tsv`: isoform x sample raw read counts (`nanocirc_quant_reads`), ready for `DESeqDataSetFromMatrix`
+  - `deseq2_coldata_<tier>.tsv`: `sample`, `group` columns, same row order as the counts matrix's columns
+  - `deseq2_features_<tier>.tsv`: per-isoform coordinates, exon block structure, `bsj_id`, `type`
+
+</details>
+
 ---
 
 ## MultiQC

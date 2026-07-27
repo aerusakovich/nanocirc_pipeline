@@ -38,7 +38,17 @@ The pipeline runs the following steps:
 ## Quick start
 
 > [!NOTE]
-> If you are new to Nextflow, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set it up. Make sure to test your setup with `-profile test` before running the workflow on actual data. That profile uses a small bundled chr21-only dataset, so it runs in a few minutes.
+> If you are new to Nextflow, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set it up.
+
+### 0. Test your installation
+
+Before running on real data, check that the pipeline and all containers work on your system:
+
+```bash
+nextflow run aerusakovich/nf_nanocirc_long_read -profile test,singularity --outdir test_results/
+```
+
+This uses a small bundled chr21-only dataset (no samplesheet or reference files needed) and runs the full pipeline end to end, all 4 tools plus quantification, in a few minutes. If it finishes with `Pipeline completed successfully`, your setup works. Swap `singularity` for `docker` if that's what you use.
 
 ### 1. Prepare a samplesheet
 
@@ -138,6 +148,17 @@ The four output modes filter on these axes:
 Set `--run_crossrun_merge true` (with a `group` column in the samplesheet) to merge circRNA calls across sequencing runs of the same sample, using the same tiered confidence logic across runs instead of tools. A locus's back-splice junction (BSJ) position and its exon structure are voted on separately: this keeps a well-supported BSJ from being dropped just because different runs reported slightly different exon structures at the same junction. A single-run structure call is kept only if that run's own tool agreement clears `--circrna_crossrun_min_corroboration`.
 
 Set `--run_quantify true` to add per-locus read counts, either per sample or per group depending on `--run_crossrun_merge`. The `discovery`/`balanced_recall` tiers then go through a confidence filter that drops low-read loci called only by CircNick-LRS, or intergenic/antisense loci called by only one tool, using `--circrna_confident_min_reads` as the read-count cutoff.
+
+When `--run_quantify true` is set, the pipeline also builds a DESeq2-ready count matrix per confidence tier, one wide table with every sample in the run as a column. Each row is one isoform (same BSJ but a different exon structure gets its own row), so multi-isoform loci aren't collapsed. Found in `<outdir>/circrna/deseq2/`:
+
+```
+deseq2/
+├── deseq2_counts_<tier>.tsv    # isoform x sample raw read counts
+├── deseq2_coldata_<tier>.tsv   # sample, group - feed straight to DESeq2's colData
+└── deseq2_features_<tier>.tsv # isoform coordinates, exon structure, bsj_id, type
+```
+
+`<tier>` is one of `discovery`, `balanced_precision`, `balanced_recall`, `high_confidence`. With `--run_crossrun_merge true`, samples in the same group are quantified against one shared catalog so their rows already line up; samples from different groups (or with cross-run merge off) are unioned across their own catalogs, 0-filled where a sample's own catalog never called that isoform.
 
 See [docs/usage.md](docs/usage.md) and [docs/output.md](docs/output.md) for full details.
 
