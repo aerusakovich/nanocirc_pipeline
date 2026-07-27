@@ -56,7 +56,7 @@ We traced every FP-supporting read back to the simulator's own ground truth (sin
 | n supporting reads (pooled, 3 runs) | 32,593 | 3,687 | 25 | 11,025 |
 
 
-Many FP come from `antisense`-type circRNA, where the simulator deliberately sets the circle's strand opposite to its host gene. Simulator also mimics cDNA based RCRT-sequencing, meaning it simulates both strand sequences: one as an actual circRNA read and the other as cDNA read. The tools correctly find the genomic position of circRNA but select the host gene's (wrong) strand instead of flipping it to the antisense one (correct). Since strand agreement is required by all three matching strategies (exon-based, relaxed BSJ, strict BSJ), no boundary-tolerance setting can rescue these FP and we didn't find an easy way to override this gene-strand bias without introducing new FP elsewhere. These realistic strand misses could also happen on real data and we suggest to keep that in mind as you move onto wet-lab validation. 
+Many FP come from `antisense`-type circRNA, where the simulator deliberately sets the circRNA's strand opposite to its host gene. Simulator also mimics cDNA based RCRT-sequencing, meaning it simulates both strand sequences: one as an actual circRNA read and the other as cDNA read. The tools correctly find the genomic position of circRNA but select the host gene's (wrong) strand instead of flipping it to the antisense one (correct). Since strand agreement is required by all three matching strategies (exon-based, relaxed BSJ, strict BSJ), no boundary-tolerance setting can rescue these FP and we didn't find an easy way to override this gene-strand bias without introducing new FP elsewhere. These realistic strand misses could also happen on real data and we suggest to keep that in mind as you move onto wet-lab validation. 
 
 **Practical implication**: most `discovery` false positives still point at the right gene/circRNA locus, just with an imprecise boundary or wrong strand. That makes them usable for gene- or locus-level expression signal analysis, but not for isoform-level analysis or primer/probe design, both of which need to get the exact strand/boundary right.
 
@@ -85,7 +85,7 @@ Recall per biotype:
 | `EIciRNA` (exon+intron) | 76.4 ± 0.1 | 23.6 ± 0.1 |
 | `intergenic` | 81.3 ± 0.2 | 18.7 ± 0.2 |
 
-Missed circles are generally longer (~3.6x), lower-expressed (~3x fewer reads), and use non-canonical splice sites more often. Rolling-circle copy number is also slightly lower, meaning weaker RCRT/RCA tandem-repeat evidence for the tools that rely on it. `eciRNA` seems to be the easier type to recover; every other biotype, especially without a clean match to an annotated exon, is more likely to be missed. Repeat overlap isn't a meaningful driver of circRNA discovery. 
+Missed circRNAs are generally longer (~3.6x), lower-expressed (~3x fewer reads), and use non-canonical splice sites more often. Rolling-circle copy number is also slightly lower, meaning weaker RCRT/RCA tandem-repeat evidence for the tools that rely on it. `eciRNA` seems to be the easier type to recover; every other biotype, especially without a clean match to an annotated exon, is more likely to be missed. Repeat overlap isn't a meaningful driver of circRNA discovery. 
 
 ### circRNA type classification
 
@@ -103,7 +103,13 @@ Same TP/FP-vs-GT breakdown as the GT coverage plot above, split by circRNA bioty
 <img src="images/benchmark/expression_correlation_human.png" width="100%"/>
 <img src="images/benchmark/expression_correlation_mouse.png" width="100%"/>
 
-Read-count correlation against ground truth (right panel) and cross-method agreement (left panel), per tool/tier.
+Read-count correlation against ground truth (right panel) and cross-method agreement (left panel), per tool/tier. Each cell shows three metrics:
+
+- **Pearson r**: linear correlation between predicted and true counts. Sensitive to whether counts scale proportionally, not just in the same direction.
+- **Spearman rho**: rank correlation. Only checks whether higher-expressed circRNAs get higher counts, regardless of exact scale. More resistant to outliers and non-linear (but still monotonic) relationships.
+- **R²** (Pearson r squared): how much of the variance in true expression is captured by the predicted counts, on a 0-1 scale.
+
+For differential expression, Spearman rho matters to rank circRNAs correctly relative to each other; Pearson r/R² matter to ensure the fold-changes DESeq2 estimates between conditions are quantitatively trustworthy, not just directionally right.
 
 <img src="images/benchmark/sensitivity_by_expression_human.png" width="100%"/>
 <img src="images/benchmark/sensitivity_by_expression_mouse.png" width="100%"/>
