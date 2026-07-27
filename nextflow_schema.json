@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://raw.githubusercontent.com/aerusakovich/nf_nanocirc_long_read/master/nextflow_schema.json",
+    "$id": "https://raw.githubusercontent.com/aerusakovich/nanocirc_pipeline/master/nextflow_schema.json",
     "title": "nanocirc pipeline parameters",
     "description": "circRNA detection and analysis pipeline for long-read circRNA analysis",
     "type": "object",
@@ -165,10 +165,10 @@
                 "circrna_confident_min_reads": {
                     "type": "integer",
                     "default": 2,
-                    "description": "Discovery/balanced_recall confidence filter: drop CircNick-LRS-only loci and intergenic/antisense-classified single-tool-supported loci at or below this many quantified reads.",
+                    "description": "Discovery/balanced_recall confidence filter: drop CircNick-LRS-only loci at or below this many quantified reads.",
                     "fa_icon": "fas fa-filter"
                 },
-                "circrna_crossrun_min_corroboration": {
+                "crossrun_min_tool_agreement": {
                     "type": "integer",
                     "default": 2,
                     "description": "Cross-run merge structure-vote corroboration bar: drop a structure backed by only 1 run unless that run's own tool-agreement (struct_agree_count) meets this threshold. Structures backed by >=2 runs are never dropped by this check.",

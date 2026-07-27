@@ -3,7 +3,7 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     nanocirc
     Long-read circRNA annotation and quantification pipeline
-    Github : https://github.com/aerusakovich/nf_nanocirc_long_read
+    Github : https://github.com/aerusakovich/nanocirc_pipeline
 
     Built from the nf-core pipeline template (https://nf-co.re).
 ----------------------------------------------------------------------------------------

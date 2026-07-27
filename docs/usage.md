@@ -32,7 +32,7 @@ Pass the samplesheet to the pipeline with:
 At minimum you need the samplesheet, a reference genome FASTA, a GTF annotation, and at least one detection tool enabled:
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read \
+nextflow run aerusakovich/nanocirc_pipeline \
     -profile singularity \
     --input samplesheet.csv \
     --outdir results/ \
@@ -43,7 +43,7 @@ nextflow run aerusakovich/nf_nanocirc_long_read \
 ### Full example (all four tools)
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read \
+nextflow run aerusakovich/nanocirc_pipeline \
     -profile singularity \
     --input        samplesheet.csv \
     --outdir       results/ \
@@ -66,7 +66,7 @@ nextflow run aerusakovich/nf_nanocirc_long_read \
 Add `-resume` to any command to reuse cached results from a previous run:
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read ... -resume
+nextflow run aerusakovich/nanocirc_pipeline ... -resume
 ```
 
 ### Params file
@@ -74,7 +74,7 @@ nextflow run aerusakovich/nf_nanocirc_long_read ... -resume
 For repeated runs with the same settings, use a params YAML file:
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read -profile singularity -params-file params.yaml
+nextflow run aerusakovich/nanocirc_pipeline -profile singularity -params-file params.yaml
 ```
 
 ```yaml title="params.yaml"
@@ -155,9 +155,9 @@ The four merged output modes apply different filters to these axes:
 | Output            | Filter applied                             | Axes kept                    |
 | ----------------- | ------------------------------------------ | ---------------------------- |
 | `discovery`       | None                                       | All entries (maximum recall) |
-| `balanced_precision` | Remove Low on either axis (`no_low`)    | ≥ Medium on both axes        |
-| `balanced_recall` | `consensus`-algorithm calls, Low kept if from a trusted tool (`trusted_only`) | ≥ Medium on both, or Low from CIRI-long/IsoCirc/circFL |
-| `high_confidence` | Require High on both axes (`high_only`)    | High on both axes only       |
+| `balanced_precision` | Remove Low on either axis, unless from IsoCirc (`isocirc_only`) | ≥ Medium on both axes, or Low from IsoCirc |
+| `balanced_recall` | `consensus`-algorithm calls, Low kept if from a trusted tool (`trusted_only`) | ≥ Medium on both, or Low from CIRI-long/IsoCirc |
+| `high_confidence` | Require High on both axes, unless Low from IsoCirc if it meads read support threshold (`high_only_isocirc`) | High on both axes, or Low from IsoCirc |
 
 > [!WARNING]
 > **Fewer than 4 tools reduces scoring resolution.** The pipeline emits a warning when fewer than 4 tools are active. Consensus labels always reflect agreement among the tools that _ran_. A `High` from 2 tools (both agree) is not the same statistical confidence as `High` from all 4 tools. See [scoring examples](#scoring-examples) below.
@@ -171,7 +171,7 @@ Cross-run merge scores each candidate locus with two separate votes:
 - **BSJ vote**: counts how many different runs support the exact back-splice junction position, ignoring exon structure. This decides which count tier (`discovery`/`balanced_precision`/`balanced_recall`/`high_confidence`) a locus qualifies for.
 - **Structure vote**: among records at the winning BSJ position only, groups them by exon structure and ranks groups by total tool agreement. This decides the final isoform structure reported for that locus.
 
-A structure seen in only 1 run is dropped unless that run's own tool agreement meets `--circrna_crossrun_min_corroboration` (default `2`). This removes weak, single-run structure calls without touching the separate BSJ vote. Testing on real data showed this cuts cross-run false positives by about 34%, for a small recall cost. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry, they are not merged away.
+A structure seen in only 1 run is dropped unless that run's own tool agreement meets `--crossrun_min_tool_agreement` (default `2`). This removes weak, single-run structure calls without touching the separate BSJ vote. Testing on real data showed this cuts cross-run false positives by about 34%, for a small recall cost. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry, they are not merged away.
 
 To enable cross-run merge, add a `group` column to the samplesheet. Samples sharing the same group name are merged together:
 
@@ -187,7 +187,7 @@ ctrl2,/data/ctrl2.fq.gz,condition_B
 Then set `--run_crossrun_merge true`:
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read \
+nextflow run aerusakovich/nanocirc_pipeline \
     --input samplesheet.csv \
     --run_crossrun_merge true \
     ...
@@ -196,14 +196,14 @@ nextflow run aerusakovich/nf_nanocirc_long_read \
 | Parameter              | Description                                           | Default |
 | ---------------------- | ----------------------------------------------------- | ------- |
 | `--run_crossrun_merge` | Enable cross-run merging using the `group` column     | `false` |
-| `--circrna_crossrun_min_corroboration` | Min tool agreement needed to keep a single-run structure (see below) | `2` |
+| `--crossrun_min_tool_agreement` | Min tool agreement needed to keep a single-run structure (see below) | `2` |
 
 In plain terms, the four tiers mean:
 
 | Tier              | What it takes to be retained |
 | ----------------- | ----------------------------- |
 | **`discovery`**   | Detected by **at least 1 tool** in **at least 1 run**. Maximum sensitivity, use for exploration |
-| **`balanced_precision`** | **Multiple tools agreed** within a run and **multiple runs** support it. Recommended for most analyses |
+| **`balanced_precision`** | **Multiple tools agreed** within a run (or a Low-confidence IsoCirc-only call) and **multiple runs** support it. Recommended for most analyses |
 | **`balanced_recall`** | Same run/support thresholds as `balanced_precision`, built on the `consensus` algorithm's trusted_only filtering. Keeps Low-confidence calls from trusted tools that `balanced_precision` would drop |
 | **`high_confidence`** | **All tools agreed** within runs and **most/all runs** support it. Maximum precision, lowest false positive rate |
 
@@ -227,15 +227,10 @@ Set `--run_quantify true` to enable circRNA read quantification: chunked remap-a
 
 Without `--run_crossrun_merge`, each sample is quantified against its own discovery catalog. With `--run_crossrun_merge`, every sample sharing a `group` is quantified against that group's crossrun discovery catalog instead. This gives one shared set of loci per group, so counts are comparable across samples, for example for differential expression.
 
-After quantification, the `discovery` and `balanced_recall` tiers also go through a confidence filter (`FILTER_CONFIDENT_DISCOVERY`) that drops two known low-confidence patterns with weak read support:
-
-- Loci only CircNick-LRS called, with a quantified read count at or below `--circrna_confident_min_reads`.
-- Intergenic or antisense loci supported by only one tool, with a quantified read count at or below `--circrna_confident_min_reads`.
-
-`balanced_precision` and `high_confidence` are not touched by this filter. Their own stricter multi-tool consensus rules already exclude this pattern.
+After quantification, `discovery`/`balanced_recall` also go through a confidence filter (`FILTER_CONFIDENT_DISCOVERY`) that drops loci only CircNick-LRS called, with a quantified read count at or below `--circrna_confident_min_reads`. `high_confidence` goes through the same filter but for a different pattern: it drops IsoCirc-only calls at or below the same read-count bar, since that tier prioritizes precision over recall. `balanced_precision` also has IsoCirc-only entries (same merge-time exception) but favors recall, so this filter does not run on it.
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read \
+nextflow run aerusakovich/nanocirc_pipeline \
     --input samplesheet.csv \
     --run_quantify true \
     ...
@@ -249,6 +244,12 @@ nextflow run aerusakovich/nf_nanocirc_long_read \
 | `--quant_locus_dedup_tolerance`  | bp tolerance (both start AND end) for near-duplicate locus dedup   | `10`    |
 | `--quant_min_old_tool_count`     | Min independent old-tool-count to flag a locus for tier2 rescue    | `50`    |
 | `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced_recall confidence filter (see above) | `2` |
+
+#### DESeq2 count matrix
+
+When `--run_quantify true` is set, the pipeline also builds one wide isoform x sample count matrix per confidence tier, pooling every sample in the run, under `<outdir>/circrna/deseq2/`. A feature row is one isoform (same BSJ but a different exon structure gets its own row). Samples sharing a crossrun catalog (same `group`, `--run_crossrun_merge true`) already share row identity; samples from different catalogs are unioned, 0-filled where a sample's own catalog never called that isoform.
+
+For each tier you get `deseq2_counts_<tier>.tsv` (isoform x sample raw counts, ready for `DESeqDataSetFromMatrix`), `deseq2_coldata_<tier>.tsv` (`sample`, `group`, same column order as the counts matrix), and `deseq2_features_<tier>.tsv` (per-isoform coordinates, exon structure, `bsj_id`, `type`). See [docs/output.md](output.md#deseq2-count-matrix) for details.
 
 ### QC options
 
@@ -306,10 +307,10 @@ Default resource labels used by the pipeline:
 | `process_low`      | 2    | 12 GB   | 4 h    |
 | `process_medium`   | 6    | 36 GB   | 8 h    |
 | `process_high`     | 12   | 72 GB   | 16 h   |
-| `process_long`     | 6    | 36 GB   | 120 h  |
-| `process_high_memory` | 6 | 200 GB  | 16 h   |
+| `process_long`     | 1 (default) | 6 GB (default) | 20 h |
+| `process_high_memory` | 6 | 200 GB  | 4 h (default) |
 
-Detection tools (isoCirc, CircFL-seq, CIRI-long, circnick-lrs) run under `process_high`. To override resources for a specific process, add to your config:
+`process_long` only overrides time; unset fields fall back to the pipeline-wide default (1 CPU, 6 GB, 4 h). It isn't used by any process by default but is available for your own config. To override resources for a specific process, add to your config:
 
 ```groovy
 process {
@@ -328,13 +329,13 @@ process {
 Use `screen`, `tmux`, or the Nextflow `-bg` flag to detach the run from your terminal:
 
 ```bash
-nextflow run aerusakovich/nf_nanocirc_long_read ... -bg
+nextflow run aerusakovich/nanocirc_pipeline ... -bg
 ```
 
 Alternatively, on HPC systems, submit the Nextflow head job itself to the scheduler:
 
 ```bash
-sbatch --wrap="nextflow run aerusakovich/nf_nanocirc_long_read ..."
+sbatch --wrap="nextflow run aerusakovich/nanocirc_pipeline ..."
 ```
 
 ---
@@ -361,6 +362,21 @@ If PREPARE_GENOME fails due to memory, override its resources in your config:
 process {
     withName: 'PREPARE_GENOME' {
         memory = '32.GB'
+    }
+}
+```
+
+### Memory errors from CIRI-long or CircFL-seq
+
+Both tools multi-thread by splitting work across cores, and each core's share adds to peak memory, so more CPUs does not always mean faster-and-safer - it can push memory usage past what's available. If one of these runs out of memory, try reducing its `cpus` rather than only raising `memory`:
+
+```groovy
+process {
+    withName: 'CIRI_LONG' {
+        cpus = 4
+    }
+    withName: 'CIRCFL_SEQ' {
+        cpus = 4
     }
 }
 ```

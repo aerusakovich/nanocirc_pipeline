@@ -166,11 +166,11 @@ This design selects the most-supported exon structure among tools that agree on 
 - `circrna/<sample>/merged/`
   - `<sample>_discovery.bed12`: hybrid, unfiltered (maximum recall)
   - `<sample>_discovery_confidence.tsv`
-  - `<sample>_balanced_precision.bed12`: hybrid + no_low filter (F1 / precision-leaning - lowest FP for decent recall)
+  - `<sample>_balanced_precision.bed12`: hybrid + isocirc_only filter (F1 / precision-leaning - lowest FP for decent recall)
   - `<sample>_balanced_precision_confidence.tsv`
   - `<sample>_balanced_recall.bed12`: consensus algorithm + trusted_only filter (best F1, recall-leaning)
   - `<sample>_balanced_recall_confidence.tsv`
-  - `<sample>_high_confidence.bed12`: hybrid + high_only filter (best precision, trusted subset)
+  - `<sample>_high_confidence.bed12`: hybrid + high_only_isocirc filter (best precision, trusted subset)
   - `<sample>_high_confidence_confidence.tsv`
 
 </details>
@@ -179,10 +179,12 @@ Four confidence-filtered outputs are published by default. After merging, each e
 
 | Output | Merge algorithm | Filter | Rule | Axes retained |
 | ------ | ---------------- | ------ | ---- | ------------- |
-| **`discovery`** | `consensus_hybrid` | none | Keep all entries, drop circNICK called entries with low read support or rare class entries with low read support (filters out majority of FP for almost no recall loss) | any |
-| **`balanced_precision`** | `consensus_hybrid` | `no_low` | Drop entries where either axis is Low | ≥ Medium on both |
-| **`balanced_recall`** | `consensus` | `trusted_only` | Drop Low-confidence entries unless the source tool is CIRI-long, IsoCirc, drop circNICK called entries with low read support or rare class entries with low read support (filters out majority of FP for almost no recall loss) | ≥ Medium on both, or Low from a trusted tool |
-| **`high_confidence`** | `consensus_hybrid` | `high_only` | Keep only entries where both axes are High | High on both |
+| **`discovery`** | `consensus_hybrid` | none | Keep all entries | any |
+| **`balanced_precision`** | `consensus_hybrid` | `isocirc_only` | Drop entries where either axis is Low, unless the source is IsoCirc | ≥ Medium on both, or Low from IsoCirc |
+| **`balanced_recall`** | `consensus` | `trusted_only` | Drop entries where either axis is Low, unless the source is CIRI-long or IsoCirc | ≥ Medium on both, or Low from a trusted tool |
+| **`high_confidence`** | `consensus_hybrid` | `high_only_isocirc` | Keep only entries where both axes are High, unless Low and the source is IsoCirc | High on both, or Low from IsoCirc |
+
+If `--run_quantify true` is also set, `discovery`/`balanced_recall`/`high_confidence` get a further post-quantification confidence filter on top of this table -- see [Quantification](#quantification) below. This filter does not run on `balanced_precision`: its "Low from IsoCirc" entries pass as-is, favoring recall, whereas `high_confidence` additionally requires read support there since that tier prioritizes precision over recall.
 
 `balanced_recall` uses the `consensus` merge algorithm (string-equality structure comparison, see below) rather than `consensus_hybrid`. It is the same trusted_only-filtered output previously published only under `--run_benchmark_modes` as `smart_consensus_filtered`.
 
@@ -328,17 +330,17 @@ Each candidate locus is scored with two separate votes, run independently:
 
 Splitting these two votes avoids a locus's correct BSJ call being discarded just because a different run happened to report a slightly different exon structure at the same junction.
 
-A structure seen in only 1 run is dropped from the structure vote unless that run's own tool agreement meets `--circrna_crossrun_min_corroboration` (default `2`); structures backed by 2 or more runs are never dropped by this check. This removes weak, single-run structure calls without changing which tier the underlying BSJ qualifies for. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry rather than being merged away.
+A structure seen in only 1 run is dropped from the structure vote unless that run's own tool agreement meets `--crossrun_min_tool_agreement` (default `2`); structures backed by 2 or more runs are never dropped by this check. This removes weak, single-run structure calls without changing which tier the underlying BSJ qualifies for. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry rather than being merged away.
 
 ### Output files
 
 <details markdown="1">
 <summary>Output files</summary>
 
-- `circrna/<group>/crossrun/`
+- `circrna/crossrun/<group>/<tier>/`
   - `<group>_<tier>_crossrun.bed12`: Merged BED12 filtered to the tier threshold
   - `<group>_<tier>_crossrun_confidence.tsv`: Full intermediate TSV: all merged circRNAs with per-sample BSJ and isoform consensus columns
-  - `<group>_<tier>_crossrun_clean.tsv`: Wet-lab-friendly TSV: filtered circRNAs with type classification (see [Clean TSV format](#clean-tsv-format))
+  - `<group>_<tier>_crossrun_clean.tsv`: Wet-lab-friendly TSV, same core columns as the [Clean TSV format](#clean-tsv-format) (`#chrom` through `type`, `supporting_tools`) but without `class_code`/`ref_gene_id`/`supporting_reads`; adds `n_samples` and a `<run>_bsj_consensus`/`<run>_isoform_consensus` pair per contributing run
 
 </details>
 
@@ -385,23 +387,25 @@ Quantification counts are also appended onto each sample's per-tier clean TSV (`
 | `nanocirc_quant_tier`            | Which stage produced the count: `tier1`, `tier2`, `tier3`, or `tier1_gene_family_unresolved` |
 | `nanocirc_quant_low_confidence`  | `true` for gene-family/repeat-cluster loci tier3 could not resolve further |
 
-The `discovery` and `balanced_recall` tiers then go through a confidence filter (`FILTER_CONFIDENT_DISCOVERY`) that drops two low-confidence patterns with weak read support:
+- `discovery` / `balanced_recall`: drops loci only CircNick-LRS called (`supporting_tools` is just `circnick`), with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
+- `balanced_precision` normally requires at least 2 tools to agree, but it keeps Isocirc only calls, based on the strength of IsoCirc's high precision.
+- `high_confidence`: normally requires most active tools to agree but also lets IsoCirc-only calls that are meeting read support threshold. This filter drops the IsoCirc-only entries with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
 
-- Loci only CircNick-LRS called (`supporting_tools` is just `circnick`), with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
-- Intergenic or antisense loci supported by only one tool, with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
 
-`balanced_precision` and `high_confidence` are not touched by this filter; their own stricter multi-tool consensus rules already exclude this pattern. The filter drops rows from both the `_clean_with_counts.tsv` table and the tier's BED12, so they stay consistent.
 
 <details markdown="1">
 <summary>Output files</summary>
 
 - `circrna/<sample>/quantify/`
-  - `<sample>_<tier>_clean_with_counts.tsv`: clean TSV with quantification columns appended (see above), and (for `discovery`/`balanced_recall`) the confidence filter applied
-  - `<sample>_<tier>.bed12`: matching BED12, same filtering applied
+  - `<sample>_quant_final_counts.tsv`: raw per-locus read counts from the tier1/tier2/tier3 rescue passes, before being joined onto the clean TSV
+- `circrna/<sample>/merged/clean/`
+  - `<sample>_<tier>_clean_with_counts.tsv`: clean TSV with quantification columns appended (see above), and (for `discovery`/`balanced_recall`/`high_confidence`) the confidence filter applied
+- `circrna/<sample>/merged/`
+  - `<sample>_<tier>.bed12`: matching BED12, same filtering applied where relevant (supersedes the pre-quantification version at this same path)
 
 </details>
 
-All intermediate quantification files (reference chunks, genome-wide alignments, the similarity database, per-tier raw counts) are internal to each task's work directory and are not published.
+All other intermediate quantification files (reference chunks, genome-wide alignments, the similarity database, per-tier raw counts before the final merge) are internal to each task's work directory and are not published.
 
 Quantification-specific parameters:
 

@@ -2,6 +2,8 @@
 
 The nanocirc documentation is split into the following pages:
 
+- [Quick Start Guide](quickstart.md)
+  - A simple-language walkthrough for your first real run: what to install, which files you need, samplesheet/config examples.
 - [Usage](usage.md)
   - An overview of how the pipeline works, how to run it and a description of all of the different command-line flags.
 - [Output](output.md)

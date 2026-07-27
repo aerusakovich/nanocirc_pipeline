@@ -50,7 +50,7 @@ process CIRCRNA_CROSSRUN_MERGE {
         --tolerance     ${params.circrna_bsj_tolerance} \\
         --struct_tolerance ${params.circrna_bsj_tolerance} \\
         --n_active      ${n} \\
-        --min_corroboration ${params.circrna_crossrun_min_corroboration} \\
+        --min_corroboration ${params.crossrun_min_tool_agreement} \\
         --outdir        .
 
     # ── Pairwise bedtools intersect ────────────────────────────────────────────

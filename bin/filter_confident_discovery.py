@@ -2,7 +2,7 @@
 """
 filter_confident_discovery.py
 ------------------------------
-Drops two low-confidence patterns from a quantified clean TSV
+Drops low-confidence patterns from a quantified clean TSV
 (circrna_clean.py / crossrun_annotate.py's _clean_with_counts.tsv, after
 quant_append_counts.py) and its matching BED12. Found by benchmarking
 against simulated ground truth:
@@ -12,17 +12,12 @@ against simulated ground truth:
      (see nanocirc_quant_reads), even inside a real gene. This is the
      single biggest false-positive source in the unfiltered catalog.
 
-  2. Intergenic or antisense loci, supported by only one tool, with weak
-     read support. A smaller, mostly separate false-positive group (no
-     gene context and no other tool backs these calls).
+Needs read support at or below --min_reads. A missing nanocirc_quant_reads
+value also fails this check. Applied to the discovery and balanced_recall
+tiers. balanced_precision already excludes this pattern through its own
+stricter multi-tool rules (checked: 0 rows affected there).
 
-Both rules need read support at or below --min_reads. A missing
-nanocirc_quant_reads value also fails this check. Applied to the
-discovery and balanced_recall tiers. balanced_precision already excludes
-this pattern through its own stricter multi-tool rules (checked: 0 rows
-affected there).
-
-  3. IsoCirc-only calls with weak read support, guarding the
+  2. IsoCirc-only calls with weak read support, guarding the
      high_only_isocirc exception in filter_confidence.py (which lets
      IsoCirc's own Low-confidence calls into the high_confidence tier).
      Only applied when --category high_confidence: IsoCirc-only calls
@@ -43,8 +38,6 @@ Usage:
         --out_bed     sample_discovery_clean.bed12
 """
 import argparse
-
-WEAK_TYPES = {'intergenic', 'antisense'}
 
 
 def parse_args():
@@ -68,14 +61,12 @@ def weak_read_support(reads_str, min_reads):
 def should_drop(row, min_reads, category=''):
     tools = row.get('supporting_tools', '')
     tool_list = [t for t in tools.split(',') if t]
-    n_tools = len(tool_list)
     low_read = weak_read_support(row.get('nanocirc_quant_reads', ''), min_reads)
 
-    circnick_only = tool_list == ['circnick']
-    weak_type_single_tool = row.get('type', '') in WEAK_TYPES and n_tools <= 1
+    circnick_only = category in ('discovery', 'balanced_recall') and tool_list == ['circnick']
     isocirc_only_weak = category == 'high_confidence' and tool_list == ['isocirc']
 
-    return low_read and (circnick_only or weak_type_single_tool or isocirc_only_weak)
+    return low_read and (circnick_only or isocirc_only_weak)
 
 
 def main():

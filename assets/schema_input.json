@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://raw.githubusercontent.com/aerusakovich/nf_nanocirc_long_read/master/assets/schema_input.json",
+    "$id": "https://raw.githubusercontent.com/aerusakovich/nanocirc_pipeline/master/assets/schema_input.json",
     "title": "nanocirc pipeline - params.input schema",
     "description": "Schema for the file provided with params.input",
     "type": "array",

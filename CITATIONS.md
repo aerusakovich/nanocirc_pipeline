@@ -1,5 +1,15 @@
 # nanocirc: Citations
 
+## nanocirc
+
+If you use this pipeline, please cite:
+
+> Rusakovich A, Derrien T*, Blum Y* (*co-last authors). nanocirc: a Nextflow pipeline for long-read circRNA detection and annotation using a consensus multi-tool approach and confidence scoring. Manuscript in preparation.
+
+This pipeline's design and benchmark was motivated by our first benchmark study:
+
+> Rusakovich A, Corre S, Cadieu E, Fraboulet RM, Le Bars V, Galibert MD, Derrien T, Blum Y. Benchmarking circRNA detection tools from long-read sequencing using a data-driven and flexible simulation framework. Peer Community Journal. 2026;6:e27. doi: 10.24072/pcjournal.699.
+
 ## [nf-core](https://pubmed.ncbi.nlm.nih.gov/32055031/)
 
 > Ewels PA, Peltzer A, Fillinger S, Patel H, Alneberg J, Wilm A, Garcia MU, Di Tommaso P, Nahnsen S. The nf-core framework for community-curated bioinformatics pipelines. Nat Biotechnol. 2020 Mar;38(3):276-278. doi: 10.1038/s41587-020-0439-x. PubMed PMID: 32055031.
@@ -34,6 +44,44 @@
 
   > Quinlan AR, Hall IM. BEDTools: a flexible suite of utilities for comparing genomic features. Bioinformatics. 2010 Mar 15;26(6):841-2. doi: 10.1093/bioinformatics/btq033. PubMed PMID: 20110278; PubMed Central PMCID: PMC2832824.
 
+- [pybedtools](https://pubmed.ncbi.nlm.nih.gov/21949271/)
+
+  > Dale RK, Pedersen BS, Quinlan AR. Pybedtools: a flexible Python library for manipulating genomic datasets and annotations. Bioinformatics. 2011 Dec 15;27(24):3423-4. doi: 10.1093/bioinformatics/btr539. PubMed PMID: 21949271; PubMed Central PMCID: PMC3232374.
+
+### Coordinate liftover
+
+- [UCSC liftOver / Genome Browser](https://pubmed.ncbi.nlm.nih.gov/12045153/)
+
+  > Kent WJ, Sugnet CW, Furey TS, Roskin KM, Pringle TH, Zahler AM, Haussler D. The human genome browser at UCSC. Genome Res. 2002 Jun;12(6):996-1006. doi: 10.1101/gr.229102. PubMed PMID: 12045153; PubMed Central PMCID: PMC186604.
+
+### Annotation
+
+- [samtools](https://pubmed.ncbi.nlm.nih.gov/33590861/)
+
+  > Danecek P, Bonfield JK, Liddle J, Marshall J, Ohan V, Pollard MO, Whitwham A, Keane T, McCarthy SA, Davies RM, Li H. Twelve years of SAMtools and BCFtools. Gigascience. 2021 Feb 16;10(2):giab008. doi: 10.1093/gigascience/giab008. PubMed PMID: 33590861; PubMed Central PMCID: PMC7931819.
+
+- [GffRead and GffCompare](https://pubmed.ncbi.nlm.nih.gov/32489650/)
+
+  > Pertea G, Pertea M. GFF Utilities: GffRead and GffCompare. F1000Res. 2020 Apr 28;9:ISCB Comm J-304. doi: 10.12688/f1000research.23297.2. PubMed PMID: 32489650; PubMed Central PMCID: PMC7222033.
+
+- [AGAT](https://www.doi.org/10.5281/zenodo.3552717)
+
+  > Dainat J. AGAT: Another Gff Analysis Toolkit to handle annotations in any GTF/GFF format. (Version v1.0.0). Zenodo. doi: 10.5281/zenodo.3552717.
+
+### Quantification
+
+- [minimap2](https://pubmed.ncbi.nlm.nih.gov/29750242/)
+
+  > Li H. Minimap2: pairwise alignment for nucleotide sequences. Bioinformatics. 2018 Sep 15;34(18):3094-3100. doi: 10.1093/bioinformatics/bty191. PubMed PMID: 29750242; PubMed Central PMCID: PMC6137996.
+
+- [BLAT](https://pubmed.ncbi.nlm.nih.gov/11932250/)
+
+  > Kent WJ. BLAT--the BLAST-like alignment tool. Genome Res. 2002 Apr;12(4):656-64. doi: 10.1101/gr.229202. PubMed PMID: 11932250; PubMed Central PMCID: PMC187518.
+
+- [BWA](https://pubmed.ncbi.nlm.nih.gov/19451168/)
+
+  > Li H, Durbin R. Fast and accurate short read alignment with Burrows-Wheeler transform. Bioinformatics. 2009 Jul 15;25(14):1754-60. doi: 10.1093/bioinformatics/btp324. PubMed PMID: 19451168; PubMed Central PMCID: PMC2705234.
+
 ### Quality control
 
 - [FastQC](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/)
@@ -49,6 +97,8 @@
   > Ewels P, Magnusson M, Lundin S, Käller M. MultiQC: summarize analysis results for multiple tools and samples in a single report. Bioinformatics. 2016 Oct 1;32(19):3047-8. doi: 10.1093/bioinformatics/btw354. Epub 2016 Jun 16. PubMed PMID: 27312411; PubMed Central PMCID: PMC5039924.
 
 ## Software packaging/containerisation tools
+
+- [containers_circRNA_tools](https://github.com/aerusakovich/containers_circRNA_tools) - this pipeline's own patched container builds for isoCirc, CircFL-seq, CIRI-long, circnick-lrs and nanocirc.
 
 - [BioContainers](https://pubmed.ncbi.nlm.nih.gov/28379341/)
 
