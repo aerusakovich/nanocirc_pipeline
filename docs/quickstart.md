@@ -28,13 +28,18 @@ isoCirc and CIRI-long both check candidate back-splice junctions against a refer
 chrom  start  end  strand
 ```
 
-We provide a real, correctly-formatted examples for chr21: `assets/test_data/human_chr21/chr21_circrna_db.bed` (a chr21 subset of a merged circBase/circAtlas database). Use it as a formatting template, or to sanity-check your own file's structure:
+We provide two ready-to-use circRNA databases based on CircBase+CircAtlas :
+
+- `assets/circrna_db/circrna_human_db.bed` (639,211 loci, ~16 MB)
+- `assets/circrna_db/circrna_mouse_db.bed` (344,719 loci, ~15 MB)
+
+You can point your `--circrna_db` straight at whichever matches your species:
 
 ```bash
-head assets/test_data/human_chr21/chr21_circrna_db.bed
+--circrna_db assets/circrna_db/circrna_human_db.bed
 ```
 
-For a full database, [circBase](http://www.circbase.org/) and circAtlas are common public sources for human/mouse circRNA coordinates; don't forget to export/reformat to BED4 before use.
+For chr21-only sanity-check or as a formatting template, there's also a smaller subset: `assets/test_data/human_chr21/chr21_circrna_db.bed`. For other species or an updated database, [circBase](http://www.circbase.org/) and circAtlas are common public sources for circRNA coordinates; export/reformat to BED4 before use.
 
 ## 4. Liftover chain 
 
