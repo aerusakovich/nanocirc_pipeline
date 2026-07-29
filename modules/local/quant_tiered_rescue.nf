@@ -1,7 +1,7 @@
 process QUANT_TIERED_RESCUE {
     tag "$meta.id"
     label 'process_high'
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/21497240/files/nanocirc-quant-latest.sif?download=1' :
         'quay.io/anrusakovich/nanocirc-quant:latest' }"
 

@@ -133,6 +133,8 @@ nextflow run aerusakovich/nanocirc_pipeline -profile test,singularity --outdir t
 
 If it finishes with `Pipeline completed successfully`, your installation is good to go.
 
+**Realistic requirements for this first run:** without a config file (see step 6), everything runs locally on the one machine you launch it from, so provide **at least 16-32 GB of RAM** and **15-30 minutes for the very first run**, not the few minutes the chr21 data itself would take, since it also has to download every container image (a few GB total). Set `NXF_APPTAINER_CACHEDIR` (or `NXF_SINGULARITY_CACHEDIR`) to a persistent directory so that download happens once, not on every re-run.
+
 ---
 
 For full parameter reference, see [docs/usage.md](usage.md). For what the pipeline produces, see [docs/output.md](output.md).

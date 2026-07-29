@@ -153,24 +153,29 @@
                 "circrna_bsj_tolerance": {
                     "type": "integer",
                     "default": 5,
+                    "minimum": 0,
                     "description": "BSJ coordinate tolerance in bp for relaxed merge mode.",
                     "fa_icon": "fas fa-ruler"
                 },
                 "circrna_isoform_overlap": {
                     "type": "number",
                     "default": 0.95,
+                    "minimum": 0,
+                    "maximum": 1,
                     "description": "Minimum reciprocal spliced-length overlap fraction for isoform confidence scoring.",
                     "fa_icon": "fas fa-percentage"
                 },
                 "circrna_confident_min_reads": {
                     "type": "integer",
                     "default": 2,
+                    "minimum": 0,
                     "description": "Discovery/balanced_recall confidence filter: drop CircNick-LRS-only loci at or below this many quantified reads.",
                     "fa_icon": "fas fa-filter"
                 },
                 "crossrun_min_tool_agreement": {
                     "type": "integer",
                     "default": 2,
+                    "minimum": 1,
                     "description": "Cross-run merge structure-vote corroboration bar: drop a structure backed by only 1 run unless that run's own tool-agreement (struct_agree_count) meets this threshold. Structures backed by >=2 runs are never dropped by this check.",
                     "fa_icon": "fas fa-filter"
                 },
@@ -204,6 +209,7 @@
                 "quant_chunk_size": {
                     "type": "integer",
                     "default": 100,
+                    "minimum": 1,
                     "description": "Number of loci per reference chunk for tier1 chunked remap-and-classify.",
                     "fa_icon": "fas fa-th"
                 },
@@ -216,12 +222,14 @@
                 "quant_locus_dedup_tolerance": {
                     "type": "integer",
                     "default": 10,
+                    "minimum": 0,
                     "description": "bp tolerance (both start AND end) for collapsing near-duplicate loci before building remap references.",
                     "fa_icon": "fas fa-ruler"
                 },
                 "quant_min_old_tool_count": {
                     "type": "number",
                     "default": 50,
+                    "minimum": 0,
                     "description": "Minimum independent old-tool read-ID-union count required to flag a locus for tier2 targeted rescue.",
                     "fa_icon": "fas fa-flag"
                 }

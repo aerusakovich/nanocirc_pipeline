@@ -5,7 +5,7 @@ process PREPARE_GENOME {
     // Cache results, skipped on subsequent runs if files already exist here
     storeDir "${params.genome_index_dir ?: "${params.outdir}/genome_index"}"
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/bwakit:0.7.15--he513fc3_2' :
         'quay.io/biocontainers/bwakit:0.7.15--he513fc3_2' }"
 

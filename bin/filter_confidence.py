@@ -11,12 +11,12 @@ confidence axes produced by add_isoform_confidence.py:
 Filter modes:
   trusted_only  : Balanced mode.
                   Removes Low entries on each axis unless the call comes from
-                  a trusted tool (CIRI-long, IsoCirc, or circFL), which are
-                  kept even when confidence is Low.
-                  - bsj_consensus Low: keep if bsj_source in {cirilong, isocirc, circfl}
+                  a trusted tool (CIRI-long or IsoCirc), which are kept even
+                  when confidence is Low.
+                  - bsj_consensus Low: keep if bsj_source in {cirilong, isocirc}
                   - isoform_consensus Low: keep if any tool in isoform_tools
-                    is in {cirilong, isocirc, circfl}
-                  CircNick-LRS Low calls are removed on both axes.
+                    is in {cirilong, isocirc}
+                  circFL, CircNick-LRS Low calls are removed on both axes.
 
   no_low        : High-confidence mode.
                   Removes all entries with Low on either axis, no exceptions.
@@ -33,7 +33,10 @@ Filter modes:
                   - isoform_consensus Low: keep only if isocirc is present
                     in isoform_tools (isocirc is the sole priority tool on
                     this axis, not merely one of several trusted ones)
-                  CIRI-long, circFL, CircNick-LRS Low calls are all removed.
+                  CIRI-long, circFL, CircNick-LRS Low calls are all removed
+                  (CIRI-long is trusted elsewhere but not given a pass here,
+                  since this mode's whole point is IsoCirc's own precision,
+                  not a general trusted-tool exception).
 
   high_only     : Strictest filter.
                   Keeps only entries where both axes are 'High'. Medium is removed.

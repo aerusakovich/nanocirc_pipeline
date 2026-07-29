@@ -2,7 +2,7 @@ process GTF_TO_FEATURE_BED {
     tag "gtf"
     label 'process_single'
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/pybedtools:0.12.0--py39h475c85d_0' :
         'quay.io/biocontainers/pybedtools:0.12.0--py39h475c85d_0' }"
 

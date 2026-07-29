@@ -4,7 +4,7 @@ process CIRCNICK_LRS {
 
     containerOptions "--writable-tmpfs"
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/20707975/files/nanocirc-circnick-lrs-v1.0.sif?download=1' :
         'quay.io/anrusakovich/circnick-lrs:latest' }"
 

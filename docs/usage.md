@@ -270,7 +270,7 @@ Use `-profile` to configure the execution environment. Multiple profiles can be 
 | `docker`      | Run with Docker containers                       |
 | `singularity` | Run with Singularity containers                  |
 | `apptainer`   | Run with Apptainer containers                    |
-| `test`        | Minimal test run with bundled test data          |
+| `test`        | Minimal test run with test data          |
 
 > [!IMPORTANT]
 > This pipeline requires containers (Docker, Singularity, or Apptainer). The four circRNA detection tools are only available as container images and **conda is not supported**.
@@ -320,6 +320,31 @@ process {
     }
 }
 ```
+
+---
+
+## Running on a cluster
+
+By default Nextflow uses its `local` executor: every process runs as a
+subprocess on whichever machine you launch `nextflow run` from.
+
+For real runs on an HPC cluster, tell Nextflow to submit each process as its own job
+via a custom config (`-c`):
+
+```groovy title="cluster.config"
+process {
+    executor = 'slurm'          // or 'sge', 'pbspro', 'lsf', ... see the Nextflow executor docs
+    queue    = 'your_partition'
+}
+```
+
+Nextflow then submits every process (FastQC, each detection tool, quantification, ...)
+as its own scheduler job, sized from the [resource labels](#resource-requirements)
+above. The `nextflow run` command itself becomes a lightweight, long-lived orchestrator. See [Running in the background](#running-in-the-background)
+below for keeping it alive.
+
+If your cluster already has an [nf-core/configs](https://github.com/nf-core/configs)
+profile, use that (`-profile <your_institution>,apptainer`) instead of writing your own.
 
 ---
 

@@ -37,8 +37,9 @@ The pipeline runs the following steps:
 
 ## Quick start
 
-> [!NOTE]
+> [!TIP]
 > If you are new to Nextflow, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set it up. New to bioinformatics ? See [docs/quickstart.md](docs/quickstart.md) for a simple-language walkthrough (what to install, which files you need, samplesheet/config examples).
+> Don't know which mode to use? See [docs/benchmark.md](docs/benchmark.md) for what each one trades off and our recommendations.
 
 ### 0. Test your installation
 

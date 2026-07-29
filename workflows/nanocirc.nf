@@ -18,10 +18,6 @@ include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pi
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { methodsDescriptionText } from '../subworkflows/local/utils_nfcore_nanocirc_pipeline'
 
-def asBool(value) {
-    return value instanceof String ? value.toBoolean() : (value as boolean)
-}
-
 /*
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     RUN MAIN WORKFLOW
@@ -38,17 +34,17 @@ workflow NANOCIRC {
     ch_versions = channel.empty()
     ch_multiqc_files = channel.empty()
 
-    // Coerce every boolean CLI flag used below once, up front. See asBool().
-    def skipQc          = asBool(params.skip_qc)
-    def skipFastqc      = asBool(params.skip_fastqc)
-    def skipNanoplot    = asBool(params.skip_nanoplot)
-    def skipMultiqc     = asBool(params.skip_multiqc)
-    def runIsocirc      = asBool(params.run_isocirc)
-    def runCircfl       = asBool(params.run_circfl)
-    def runCirilong     = asBool(params.run_cirilong)
-    def runCircnick     = asBool(params.run_circnick)
-    def runCrossrunMerge = asBool(params.run_crossrun_merge)
-    def runQuantify      = asBool(params.run_quantify)
+    // Coerce every boolean CLI flag used below once, up front. See Utils.asBool().
+    def skipQc          = Utils.asBool(params.skip_qc)
+    def skipFastqc      = Utils.asBool(params.skip_fastqc)
+    def skipNanoplot    = Utils.asBool(params.skip_nanoplot)
+    def skipMultiqc     = Utils.asBool(params.skip_multiqc)
+    def runIsocirc      = Utils.asBool(params.run_isocirc)
+    def runCircfl       = Utils.asBool(params.run_circfl)
+    def runCirilong     = Utils.asBool(params.run_cirilong)
+    def runCircnick     = Utils.asBool(params.run_circnick)
+    def runCrossrunMerge = Utils.asBool(params.run_crossrun_merge)
+    def runQuantify      = Utils.asBool(params.run_quantify)
 
     // Ensure all FASTQ files are named *.fastq.gz. NanoPlot needs this,
     // it detects input type from the extension.

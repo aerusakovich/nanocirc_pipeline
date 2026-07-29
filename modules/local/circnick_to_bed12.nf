@@ -2,7 +2,7 @@ process CIRCNICK_TO_BED12 {
     tag "$meta.id"
     label 'process_low'
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/python:3.9--1' :
         'quay.io/biocontainers/python:3.9--1' }"
 

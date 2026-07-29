@@ -37,7 +37,7 @@ workflow {
     main:
     params.fasta = getGenomeAttribute('fasta')
 
-    // Boolean params are coerced per-consumer via asBool() (workflows/nanocirc.nf,
+    // Boolean params are coerced per-consumer via Utils.asBool() (workflows/nanocirc.nf,
     // subworkflows/local/circrna_analysis.nf), not here.
 
     //

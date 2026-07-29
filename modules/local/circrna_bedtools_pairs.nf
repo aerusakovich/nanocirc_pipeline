@@ -2,7 +2,7 @@ process CIRCRNA_BEDTOOLS_PAIRS {
     tag "$meta.id"
     label 'process_medium'
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/bedtools:2.30.0--hc088bd4_0' :
         'quay.io/biocontainers/bedtools:2.30.0--hc088bd4_0' }"
 

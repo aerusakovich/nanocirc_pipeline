@@ -2,7 +2,7 @@ process CIRCNICK_LIFTOVER {
     tag "$meta.id"
     label 'process_low'
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://depot.galaxyproject.org/singularity/liftover:1.4.0--py313h7fbb527_0' :
         'quay.io/biocontainers/liftover:1.4.0--py313h7fbb527_0' }"
 

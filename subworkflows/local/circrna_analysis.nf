@@ -29,15 +29,6 @@ include { GTF_TO_FEATURE_BED     } from '../../modules/local/gtf_to_feature_bed'
 include { CIRCRNA_FINALIZE       } from '../../modules/local/circrna_finalize'
 include { CIRCRNA_ANNOTATE       } from './circrna_annotate'
 
-// Reads params.X once into a real boolean. Nextflow keeps returning the
-// original CLI string on every later read of params.X (the CLI value always
-// wins over an in-script reassignment), so this must be called once per
-// value used, not relied on via a global params mutation. See the identical
-// helper + comment in workflows/nanocirc.nf for the confirming repro.
-def asBool(value) {
-    return value instanceof String ? value.toBoolean() : (value as boolean)
-}
-
 workflow CIRCRNA_ANALYSIS {
 
     take:
@@ -50,12 +41,12 @@ workflow CIRCRNA_ANALYSIS {
 
     def ch_versions = channel.empty()
 
-    def runIsocirc       = asBool(params.run_isocirc)
-    def runCircfl        = asBool(params.run_circfl)
-    def runCirilong      = asBool(params.run_cirilong)
-    def runCircnick      = asBool(params.run_circnick)
-    def runBenchmarkModes = asBool(params.run_benchmark_modes)
-    def skipAnnotation    = asBool(params.skip_annotation)
+    def runIsocirc       = Utils.asBool(params.run_isocirc)
+    def runCircfl        = Utils.asBool(params.run_circfl)
+    def runCirilong      = Utils.asBool(params.run_cirilong)
+    def runCircnick      = Utils.asBool(params.run_circnick)
+    def runBenchmarkModes = Utils.asBool(params.run_benchmark_modes)
+    def skipAnnotation    = Utils.asBool(params.skip_annotation)
 
     // Gene/exon BED files derived from GTF, used for type classification
     GTF_TO_FEATURE_BED(gtf)

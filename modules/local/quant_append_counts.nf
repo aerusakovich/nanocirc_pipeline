@@ -1,7 +1,7 @@
 process QUANT_APPEND_COUNTS {
     tag "${meta.id}:${meta.category}"
     label 'process_single'
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+    container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/21497240/files/nanocirc-quant-latest.sif?download=1' :
         'quay.io/anrusakovich/nanocirc-quant:latest' }"
 
