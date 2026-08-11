@@ -107,18 +107,18 @@ After merging, each entry is scored on the two independent axes above, then one 
 
 If `--run_quantify true` is set, `discovery`/`balanced_recall`/`high_confidence` get a further post-quantification confidence filter on top of this table, see [Quantification](#quantification) below. It does not run on `balanced_precision`: its Low-from-IsoCirc entries pass as-is, favoring recall, whereas `high_confidence` additionally requires read support there since that tier prioritizes precision over recall.
 
-### Why vote-based merging beats naive set operations
+### Why we chose vote-based merging and not simple union/intersection approaches? 
 
-A natural alternative to nanocirc's tiers is to just deduplicate each tool's raw calls (relaxed-BSJ grouping) and take the union (any 1 of 4 tools) or an N-of-4 intersection. Scored the same way (exon-based matching, `final_benchmark` human/mouse, pooled TP/FP/FN across 3 runs each) against the matched nanocirc tier for each naive rule:
+A natural alternative to nanocirc's tiers is to just deduplicate each tool's raw calls (relaxed-BSJ grouping) and take the union (any 1 of 4 tools) or an N-of-4 intersection. Scored the same way (exon-based matching, `final_benchmark` human/mouse, pooled TP/FP/FN across 3 runs each) against the matched nanocirc tier for each union/intersection rule:
 
-**Sensitivity: naive union vs `discovery`**
+**Sensitivity: union vs `discovery`**
 
 | | Human | Mouse |
 | --- | --- | --- |
 | Naive union (any 1 of 4 tools, deduplicated) | P 0.546 / R 0.381 / F1 0.449 | P 0.602 / R 0.527 / F1 0.562 |
 | `discovery` | P 0.577 / R 0.392 / F1 0.467 | P 0.665 / R 0.556 / F1 0.606 |
 
-**Precision: naive intersection vs `balanced_precision`/`high_confidence`**
+**Precision: intersection vs `balanced_precision`/`high_confidence`**
 
 | | Human | Mouse |
 | --- | --- | --- |
@@ -127,14 +127,14 @@ A natural alternative to nanocirc's tiers is to just deduplicate each tool's raw
 | Naive 4-of-4 intersection | P 0.911 / R 0.050 / F1 0.095 | P 0.997 / R 0.086 / F1 0.158 |
 | `high_confidence` | P 0.910 / R 0.095 / F1 0.171 | P 0.986 / R 0.196 / F1 0.328 |
 
-**F1: naive 2-of-4 intersection vs `balanced_recall`**
+**F1: 2-of-4 intersection vs `balanced_recall`**
 
 | | Human | Mouse |
 | --- | --- | --- |
 | Naive 2-of-4 intersection | P 0.827 / R 0.186 / F1 0.304 | P 0.910 / R 0.285 / F1 0.434 |
 | `balanced_recall` | P 0.740 / R 0.360 / F1 0.484 | P 0.849 / R 0.522 / F1 0.646 |
 
-At every matched threshold, nanocirc's tier has higher recall and higher F1 than the naive count, in both species. nanocirc's tiers separate the BSJ-agreement decision from the structure-agreement decision (a locus can qualify without every supporting tool agreeing on the exact exon structure) and recover a tool's own additional correctly-resolved isoforms at the winning BSJ (see [multi-isoform recovery](#default-merge-mode-consensus_hybrid) above). That is the main reason nanocirc's consensus resolves a better precision/recall balance than simple set operations on the same 4 tools' raw calls.
+At every matched threshold, nanocirc's tier has higher recall and higher F1 than the basic operation count, in both species. nanocirc's tiers separate the BSJ-agreement decision from the structure-agreement decision (a locus can qualify without every supporting tool agreeing on the exact exon structure) and recover a tool's own additional correctly-resolved isoforms at the winning BSJ (see [multi-isoform recovery](#default-merge-mode-consensus_hybrid) above). That is the main reason nanocirc's consensus has a better precision/recall balance than simple set operations on the same 4 tools' raw calls.
 
 ## Cross-run merge
 
