@@ -81,6 +81,31 @@ workflow NANOCIRC {
     if (!runIsocirc && !runCircfl && !runCirilong && !runCircnick) {
         error("At least one tool must be active. Use --run_isocirc, --run_circfl, --run_cirilong, or --run_circnick.")
     }
+    if (runIsocirc && params.isocirc_args?.trim()) {
+        def forbidden = ['-t', '--threads', '--bedtools', '--minimap2']
+        def hit = (params.isocirc_args.trim().split(/\s+/) as List).find { t -> t in forbidden }
+        if (hit) {
+            error("--isocirc_args cannot include '${hit}': nanocirc already manages threads and tool paths for isoCirc.")
+        }
+    }
+    if (runCircfl && params.circfl_args?.trim()) {
+        def tokens = params.circfl_args.trim().split(/\s+/) as List
+        def skipNext = false
+        tokens.eachWithIndex { tok, i ->
+            if (skipNext) {
+                skipNext = false
+            } else if (tok == '-u') {
+                // no value to skip
+            } else if (tok == '-m') {
+                if (i + 1 >= tokens.size()) {
+                    error("--circfl_args: '-m' requires a value (path to a repeat-mask file).")
+                }
+                skipNext = true
+            } else {
+                error("--circfl_args only accepts '-u' and '-m <rmsk>': '${tok}' is not allowed. Every other circfull flag is a hardcoded I/O path nanocirc uses to chain RG/DNSC/cRG/mRG together.")
+            }
+        }
+    }
     if (runCircnick) {
         if (!params.circnick_species) {
             error("Parameter '--circnick_species' is required when '--run_circnick' is set. Valid options: 'mouse', 'human'")

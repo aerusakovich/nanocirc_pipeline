@@ -46,7 +46,8 @@ process CIRCFL_SEQ {
         -a anno.gtf.gz \\
         -t ${task.cpus} \\
         -r \\
-        -o ${out}
+        -o ${out} \\
+        ${args}
 
     circfull DNSC \\
         -f ${out}/RG/circSeq.fa \\

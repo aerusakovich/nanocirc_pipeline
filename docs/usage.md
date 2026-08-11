@@ -124,6 +124,26 @@ By default all four tools are enabled, except that `--wet_lab circnick` runs Cir
 > [!NOTE]
 > circnick-lrs uses built-in mm10 (mouse) or hg19 (human) references internally. If your analysis uses a different genome build, provide `--circnick_liftover_chain` to convert coordinates.
 
+### Tool-native options
+
+Pass extra flags straight through to isoCirc's or CircFL-seq's own CLI, on top of nanocirc's own defaults (empty by default: each tool's own native defaults apply). CIRI-long and circnick-lrs have no user-facing detection-tuning flags at all (verified against their own `--help`), so there is no equivalent flag for either.
+
+| Parameter        | Description                                                              | Default |
+| ----------------- | --------------------------------------------------------------------------- | ------- |
+| `--isocirc_args` | Extra args appended to the `isocirc` command. Cannot include `-t`/`--threads`/`--bedtools`/`--minimap2`, which nanocirc already manages. | `''` |
+| `--circfl_args`  | Extra args for circfull's `RG` step. Only `-u` (disable fusion-circRNA detection) and `-m <rmsk_bed>` (drop candidates overlapping a repeat-region BED file, via `bedtools intersect`; only takes effect together with nanocirc's own `-r` filter flag, which is already always set) are accepted; every other circfull flag is a hardcoded I/O path nanocirc uses to chain `RG`/`DNSC`/`cRG`/`mRG` together, so anything else is rejected at startup. | `''` |
+
+> [!NOTE]
+> If the value itself starts with `-` (e.g. `-u`, or `-m <path>`), use `--flag=value` rather than `--flag value`: Nextflow's own CLI parser can otherwise mistake the value for a new flag.
+
+```bash
+nextflow run aerusakovich/nanocirc_pipeline \
+    --input samplesheet.csv \
+    --isocirc_args='--min-copy 3.0' \
+    --circfl_args='-u -m /path/to/rmsk.bed' \
+    ...
+```
+
 ### Merge options
 
 These options control how results from multiple tools are merged and scored:

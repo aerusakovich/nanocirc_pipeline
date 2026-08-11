@@ -147,6 +147,18 @@
                     "format": "file-path",
                     "description": "UCSC chain file for circnick-lrs coordinate liftover (optional).",
                     "fa_icon": "fas fa-link"
+                },
+                "isocirc_args": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Extra native isoCirc CLI args, appended as-is. Empty by default: isoCirc's own defaults apply. Cannot include -t/--threads/--bedtools/--minimap2, which nanocirc already manages.",
+                    "fa_icon": "fas fa-sliders-h"
+                },
+                "circfl_args": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Extra native args for circfull's RG step. Only '-u' (disable fusion-circRNA detection) and '-m <rmsk_bed>' (drop candidates overlapping a repeat-region BED file) are accepted; every other circfull flag is a hardcoded I/O path shared across nanocirc's RG/DNSC/cRG/mRG chain.",
+                    "fa_icon": "fas fa-sliders-h"
                 }
             }
         },
