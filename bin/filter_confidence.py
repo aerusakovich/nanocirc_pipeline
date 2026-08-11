@@ -11,12 +11,12 @@ confidence axes produced by add_isoform_confidence.py:
 Filter modes:
   trusted_only  : Balanced mode.
                   Removes Low entries on each axis unless the call comes from
-                  a trusted tool (CIRI-long or IsoCirc), which are kept even
-                  when confidence is Low.
-                  - bsj_consensus Low: keep if bsj_source in {cirilong, isocirc}
+                  a trusted tool (--trusted_tools, default cirilong,isocirc,circfl),
+                  kept even when confidence is Low.
+                  - bsj_consensus Low: keep if bsj_source in trusted_tools
                   - isoform_consensus Low: keep if any tool in isoform_tools
-                    is in {cirilong, isocirc}
-                  circFL, CircNick-LRS Low calls are removed on both axes.
+                    is in trusted_tools
+                  Other tools' Low calls are removed on both axes.
 
   no_low        : High-confidence mode.
                   Removes all entries with Low on either axis, no exceptions.
@@ -63,7 +63,6 @@ import argparse
 import sys
 import os
 
-TRUSTED_TOOLS = {'cirilong', 'isocirc'}
 ISOCIRC_ONLY_TOOLS = {'isocirc'}
 ISOCIRC_EXCEPTION_MODES = {'isocirc_only', 'high_only_isocirc'}
 NO_EXCEPTION_MODES = {'no_low', 'high_only'}
@@ -77,28 +76,33 @@ def parse_args():
                    choices=['trusted_only', 'no_low', 'isocirc_only',
                             'high_only', 'high_only_isocirc'],
                    help='Filter mode')
+    p.add_argument('--trusted_tools', default='cirilong,isocirc,circfl',
+                   help='Comma-separated tool names trusted_only rescues Low calls '
+                        'from (params.circrna_trusted_tools). Only affects '
+                        'trusted_only; isocirc_only and high_only_isocirc always '
+                        'trust IsoCirc alone, regardless of this flag.')
     p.add_argument('--prefix', required=True,
                    help='Output file prefix (outputs: prefix.bed12, prefix_confidence.tsv)')
     return p.parse_args()
 
 
-def _bsj_low_passes(cols, idx, mode):
+def _bsj_low_passes(cols, idx, mode, trusted_tools):
     """
     Decide whether a Low bsj_consensus record is kept.
     no_low / high_only → always False.
-    trusted_only → True only if the BSJ source is a trusted tool.
+    trusted_only → True only if the BSJ source is in trusted_tools.
     isocirc_only / high_only_isocirc → True only if the BSJ source is IsoCirc.
     """
     if mode in NO_EXCEPTION_MODES:
         return False
-    trusted = ISOCIRC_ONLY_TOOLS if mode in ISOCIRC_EXCEPTION_MODES else TRUSTED_TOOLS
+    trusted = ISOCIRC_ONLY_TOOLS if mode in ISOCIRC_EXCEPTION_MODES else trusted_tools
     # check bsj_source (smart TSVs) or the relevant tool presence flag(s)
     if 'bsj_source' in idx:
         return cols[idx['bsj_source']] in trusted
     return any(t in idx and cols[idx[t]] == '1' for t in trusted)
 
 
-def _isoform_low_passes(cols, idx, mode):
+def _isoform_low_passes(cols, idx, mode, trusted_tools):
     """
     Decide whether a Low isoform_consensus record is kept.
     no_low / high_only → always False.
@@ -107,7 +111,7 @@ def _isoform_low_passes(cols, idx, mode):
     """
     if mode in NO_EXCEPTION_MODES:
         return False
-    trusted = ISOCIRC_ONLY_TOOLS if mode in ISOCIRC_EXCEPTION_MODES else TRUSTED_TOOLS
+    trusted = ISOCIRC_ONLY_TOOLS if mode in ISOCIRC_EXCEPTION_MODES else trusted_tools
     # check isoform_tools column (smart TSVs)
     if 'isoform_tools' in idx:
         tools = set(cols[idx['isoform_tools']].split(','))
@@ -116,7 +120,7 @@ def _isoform_low_passes(cols, idx, mode):
     return any(t in idx and cols[idx[t]] == '1' for t in trusted)
 
 
-def passes_filter(cols, idx, mode):
+def passes_filter(cols, idx, mode, trusted_tools):
     """
     Return True if this TSV row should be kept.
     idx: dict mapping column name → column index.
@@ -133,18 +137,19 @@ def passes_filter(cols, idx, mode):
     iso_cons = cols[idx['isoform_consensus']] if 'isoform_consensus' in idx else 'NA'
 
     if mode in ('high_only', 'high_only_isocirc'):
-        bsj_ok = (bsj_cons == 'High') or (bsj_cons == 'Low' and _bsj_low_passes(cols, idx, mode))
-        iso_ok = (iso_cons == 'High') or (iso_cons == 'Low' and _isoform_low_passes(cols, idx, mode))
+        bsj_ok = (bsj_cons == 'High') or (bsj_cons == 'Low' and _bsj_low_passes(cols, idx, mode, trusted_tools))
+        iso_ok = (iso_cons == 'High') or (iso_cons == 'Low' and _isoform_low_passes(cols, idx, mode, trusted_tools))
         return bsj_ok and iso_ok
 
-    bsj_ok = (bsj_cons != 'Low') or _bsj_low_passes(cols, idx, mode)
-    iso_ok = (iso_cons != 'Low') or _isoform_low_passes(cols, idx, mode)
+    bsj_ok = (bsj_cons != 'Low') or _bsj_low_passes(cols, idx, mode, trusted_tools)
+    iso_ok = (iso_cons != 'Low') or _isoform_low_passes(cols, idx, mode, trusted_tools)
 
     return bsj_ok and iso_ok
 
 
 def main():
     args = parse_args()
+    trusted_tools = {t.strip() for t in args.trusted_tools.split(',') if t.strip()}
 
     kept_ids     = set()
     tsv_out      = []
@@ -182,7 +187,7 @@ def main():
             cols   = line.split('\t')
             bsj_id = cols[4]   # bsj_id is always column 4 in all confidence TSVs
 
-            if passes_filter(cols, header_idx, args.mode):
+            if passes_filter(cols, header_idx, args.mode, trusted_tools):
                 kept_ids.add(bsj_id)
                 tsv_out.append(line)
 

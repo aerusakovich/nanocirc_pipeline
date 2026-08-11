@@ -31,13 +31,9 @@ process GTF_TO_FEATURE_BED {
         print \$1,\$4-1,\$5,n,0,\$7
     }' ${gtf} | sort -k1,1 -k2,2n > exon.raw.bed
 
-    # Different transcripts of the same gene can have overlapping exons.
-    # classify_types() adds up the overlap bp for every matching exon.bed
-    # line. Without merging, a locus with many exon-annotated isoforms
-    # gets its bases counted more than once. That pushes exon_frac above
-    # 1.0 and can wrongly turn an eicirna (part exon, part intron) into an
-    # ecirna. Merge same-strand overlapping intervals first, so each base
-    # is counted only once.
+    # Merge overlapping same-strand exons first: without it, classify_types()
+    # double-counts bp from overlapping transcript exons, pushing exon_frac
+    # above 1.0 and misclassifying EIciRNA as eciRNA.
     bedtools merge -s -i exon.raw.bed -c 6 -o distinct \\
         | awk 'BEGIN{OFS="\\t"}{print \$1,\$2,\$3,".",0,\$4}' > exon.bed
 

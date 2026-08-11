@@ -39,7 +39,7 @@ The pipeline runs the following steps:
 
 > [!TIP]
 > If you are new to Nextflow, please refer to [this page](https://nf-co.re/docs/usage/installation) on how to set it up. New to bioinformatics ? See [docs/quickstart.md](docs/quickstart.md) for a simple-language walkthrough (what to install, which files you need, samplesheet/config examples).
-> Don't know which mode to use? See [docs/benchmark.md](docs/benchmark.md) for what each one trades off and our recommendations.
+> Don't know which mode to use? See [benchmark results](docs/benchmark.md) for what each one trades off and our recommendations.
 
 ### 0. Test your installation
 
@@ -87,9 +87,10 @@ For full parameter documentation see [docs/usage.md](docs/usage.md).
 | `--fasta`                   | Reference genome FASTA                                    | N/A     |
 | `--gtf`                     | Gene annotation GTF                                       | N/A     |
 | `--circrna_db`              | circRNA database BED (required for isoCirc and CIRI-long) | N/A     |
-| `--run_isocirc`             | Enable isoCirc                                            | `true`  |
-| `--run_circfl`              | Enable CircFL-seq                                         | `true`  |
-| `--run_cirilong`            | Enable CIRI-long                                          | `true`  |
+| `--wet_lab`                 | Wet-lab protocol preset: `ciri_long`, `circfl`, `isocirc`, `circnick`. `circnick` switches to CircNick-LRS alone; `isocirc` defaults `--run_cirilong` to `false` (see [benchmark results](docs/benchmark.md)); `--run_*` flags still override it | `null` |
+| `--run_isocirc`             | Enable isoCirc                                            | `true` (`false` if `--wet_lab circnick`) |
+| `--run_circfl`              | Enable CircFL-seq                                         | `true` (`false` if `--wet_lab circnick`) |
+| `--run_cirilong`            | Enable CIRI-long                                          | `true` (`false` if `--wet_lab circnick` or `isocirc`) |
 | `--run_circnick`            | Enable circnick-lrs                                       | `true`  |
 | `--circnick_species`        | Species for circnick-lrs: `mouse` or `human`              | N/A     |
 | `--circnick_liftover_chain` | UCSC chain file for coordinate liftover (optional, but required if provided version of genome differs from h19 or m38, otherwise circNICK-lrs results will be incomparable with other tools) | N/A |
@@ -116,7 +117,7 @@ circrna/
 │   └── merged/                         # Hybrid smart-merge outputs
 │       ├── <sample>_discovery.*          # all merged circRNAs (max recall)
 │       ├── <sample>_balanced_precision.*  # isocirc_only filter (precision-leaning)
-│       ├── <sample>_balanced_recall.*     # consensus algorithm, trusted_only filter (recall-leaning)
+│       ├── <sample>_balanced_recall.*     # hybrid, trusted_only filter (recall-leaning)
 │       ├── <sample>_high_confidence.*     # high_only_isocirc filter (max precision)
 │       ├── clean/                        # wet-lab-friendly TSV per tier, the main output for downstream analysis
 │       ├── annotated/                     # GFF-compared, annotated TSV per tier
@@ -137,7 +138,7 @@ Each merged circRNA is scored on two **independent** axes:
 - **`bsj_consensus`** (`Low`/`Medium`/`High`): fraction of active tools detecting this BSJ
 - **`isoform_consensus`** (`Low`/`Medium`/`High`): fraction of active tools confirming this exon structure
 
-Both are binned from the percentage of active tools (≤25% → Low, ≤75% → Medium, >75% → High). The two axes are independent: a circRNA can have a well-supported BSJ but uncertain isoform boundaries.
+Both are binned from tool-agreement count relative to however many tools actually ran: exactly 1 supporting tool is always Low, every active tool agreeing is always High, anything in between is Medium. This keeps a single-tool call Low regardless of how many tools you disabled, rather than drifting into Medium just because the denominator shrank. The two axes are independent: a circRNA can have a well-supported BSJ but uncertain isoform boundaries.
 
 The four output modes filter on these axes:
 
@@ -145,12 +146,12 @@ The four output modes filter on these axes:
 | ----------------- | ----------------------------------------- |
 | `discovery`       | All (no filter)                           |
 | `balanced_precision` | ≥ Medium on both axes, or Low from IsoCirc |
-| `balanced_recall` | ≥ Medium on both, or Low from a trusted tool (CIRI-long/IsoCirc) |
+| `balanced_recall` | ≥ Medium on both, or Low from a trusted tool (CIRI-long/IsoCirc/CircFL-seq by default, `--circrna_trusted_tools`) |
 | `high_confidence` | High on **both** axes, or Low from IsoCirc if it meets read support threshold|
 
-> **Note:** Scores reflect agreement among the tools that actually ran. A `High` from 2 tools (both agree) is not equivalent to `High` from 4 tools. The pipeline warns when fewer than 4 tools are active.
+> **Note:** Scores reflect agreement among the tools that actually ran. A `High` from 2 tools (both agree) is not equivalent to `High` from 4 tools.
 
-Not sure which tier fits your analysis? See [docs/benchmark.md](docs/benchmark.md) for what each one trades off, our recommendations, and the benchmark plots behind them.
+Not sure which tier fits your analysis? See [benchmark results](docs/benchmark.md) for what each one trades off, our recommendations, and the benchmark plots behind them.
 
 ## Cross-run merge and quantification
 

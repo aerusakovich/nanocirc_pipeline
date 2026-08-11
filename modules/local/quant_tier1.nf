@@ -3,7 +3,7 @@ process QUANT_TIER1 {
     label 'process_high'
     container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/21497240/files/nanocirc-quant-latest.sif?download=1' :
-        'quay.io/anrusakovich/nanocirc-quant:latest' }"
+        'quay.io/anrusakovich/nanocirc-quant@sha256:11534ee495f3717000a9b848600a395db092d22798a40eb4bccd533f7ca362ad' }"
 
     input:
     tuple val(meta), path(fastq), path(deduped_metadata), path(refs_fasta), path(refs_lengths), path(chunks_dir)

@@ -164,6 +164,11 @@ def classify_types(rows, gene_bed, exon_bed):
       antisense  : opposite-strand gene overlap only
       intergenic : no gene overlap on either strand
 
+    Keyed on each row's own full (isoform-specific) bsj_id, not the shared
+    locus id: two isoforms at the same BSJ can have genuinely different exon
+    structure (e.g. one purely exonic, another retaining an intron), so they
+    can legitimately classify differently.
+
     Returns {bsj_id: type_string}.
     """
     if not rows:
@@ -177,7 +182,7 @@ def classify_types(rows, gene_bed, exon_bed):
             start  = row.get('start', '')
             end    = row.get('end', '')
             strand = row.get('strand', '.')
-            bsj_id = row.get('bsj_id', '').split('|')[0]
+            bsj_id = row.get('bsj_id', '')
             # cross-run rows carry BED12 block columns from smart_merge output
             block_count  = row.get('sel_block_count',  '1')
             block_sizes  = row.get('sel_block_sizes',  '') or f"{int(end)-int(start)},"
@@ -280,9 +285,10 @@ def main():
         clean_w.writeheader()
 
         for row in rows:
-            bsj_id = row.get('bsj_id', '').split('|')[0]
+            full_bsj_id = row.get('bsj_id', '')
+            bsj_id = full_bsj_id.split('|')[0]
             row['n_samples'] = row.get('bsj_confidence', '')
-            row['type']      = types.get(bsj_id, '')
+            row['type']      = types.get(full_bsj_id, '')
             all_tools_present = set()
             for name in args.sample_names:
                 bc, ic, tools_present = lookup(sample_indexes[name], bsj_id, args.bsj_tol)
@@ -302,13 +308,14 @@ def main():
                 count = 0
             if count >= args.min_count:
                 clean_w.writerow(row)
-                filtered_ids.add(bsj_id)
+                filtered_ids.add(full_bsj_id)
 
-    # Write filtered BED12
+    # Matched on the full isoform id, not the locus-only base id: a row only
+    # survives if its own isoform passed the filter, not a sibling's.
     with open(args.input_bed) as fi, open(f'{args.prefix}.bed12', 'w') as fo:
         for line in fi:
             cols = line.split('\t')
-            if len(cols) >= 4 and cols[3].split('|')[0] in filtered_ids:
+            if len(cols) >= 4 and cols[3] in filtered_ids:
                 fo.write(line)
 
 

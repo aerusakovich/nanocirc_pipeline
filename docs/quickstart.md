@@ -75,12 +75,19 @@ run2,/data/run2.fastq.gz,condition_A
 nextflow run aerusakovich/nanocirc_pipeline -profile singularity --input samplesheet.csv --outdir results/ ...
 ```
 
-**HPC cluster** (e.g. SLURM): add a config file telling Nextflow to submit each process as its own job, and where your container cache is located:
+**HPC cluster** (e.g. SLURM): first check if your institution already has a ready-made profile at [nf-core/configs](https://github.com/nf-core/configs/tree/master/conf). If it does (e.g. `genouest`), just add it to `-profile` and skip the config file below:
+
+```bash
+nextflow run aerusakovich/nanocirc_pipeline -profile singularity,genouest --input samplesheet.csv --outdir results/ ...
+```
+
+If your institution has no ready-made profile, write a small config file yourself. This tells Nextflow to submit each process as its own job, instead of running everything on one machine:
 
 ```groovy
 // cluster.config
 process {
     executor = 'slurm'
+    queue    = 'your_partition'   // ask your admin, or run `sinfo -s`
 }
 singularity {
     enabled    = true
@@ -94,6 +101,8 @@ Then add `-c cluster.config` to the command:
 ```bash
 nextflow run aerusakovich/nanocirc_pipeline -profile singularity -c cluster.config --input samplesheet.csv --outdir results/ ...
 ```
+
+Without this, every step shares one single job. If that job's time runs out, the whole run stops, even if some steps are still working.
 
 See [docs/usage.md](usage.md#resource-requirements) to override CPU/memory/time for specific processes.
 

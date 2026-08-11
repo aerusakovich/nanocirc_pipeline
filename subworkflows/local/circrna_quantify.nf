@@ -101,11 +101,8 @@ workflow CIRCRNA_QUANTIFY {
 
     emit:
     final_counts = QUANT_TIERED_RESCUE.out.counts   // channel: [ val(meta), path(quant_final_counts.tsv) ]
-    // Per-sample cluster_map, broadcast from this sample's quant unit. Needed
-    // downstream to join quant_final_counts.tsv's representative-locus bsj_ids
-    // back onto the pipeline's own per-sample clean.tsv tables. The join must
-    // hop through cluster_map, never directly, or about 19% of loci silently
-    // get 0 counts (see quant_append_counts.py).
+    // Must join onto clean.tsv via cluster_map, not directly: skipping this
+    // hop silently zeroes ~19% of loci's counts (see quant_append_counts.py).
     cluster_map  = ch_run_catalog.map { meta, _dedup, cmap, _rfasta, _rlen, _chunks, _simdb -> [meta, cmap] }
     versions     = ch_versions
 }

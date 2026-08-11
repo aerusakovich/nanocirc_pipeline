@@ -2,7 +2,190 @@
 
 This benchmark is adapted from our own earlier benchmark study, Rusakovich et al., "Benchmarking circRNA detection tools from long-read sequencing using a data-driven and flexible simulation framework" (Peer Community Journal, 2026; see [CITATIONS.md](../CITATIONS.md) for the full reference), modified and extended based on our newer findings. 
 
-This page summarizes the benchmark behind nanocirc's four confidence tiers and gives practical guidance on which one to use. Full methodology with the new simulator and benchmark scripts will be published to the benchmark git https://gitlab.com/bingo-igdr/nano-circ as v3. Results below are from simulated human and mouse datasets, 3 runs each.
+This page summarizes the benchmark behind nanocirc's four confidence tiers and gives practical guidance on which one to use. The new simulator and benchmark scripts is in this repo, [nano-circ](https://gitlab.com/bingo-igdr/nano-circ), as v3. Results below are from simulated human and mouse datasets, 3 runs each.
+
+Several benchmarks are shown below:
+
+- **[Same circRNAs, three wet-lab protocols](#same-circrnas-three-wet-lab-protocols)**: NanoSim's read-error model is characterized from real CIRI-long/isoCIRC and circFL-seq protocols ONT control reads; circRNA type composition and length/exon/splice distributions are the same across all 3 wet-lab methods, circRNA generation based on circRNAs from a human circbase+circatlas catalog. 
+- **[Species benchmark: human vs mouse](#species-benchmark-human-vs-mouse)**: CIRI-long protocol, each species' own circRNA catalog and genome. Any difference here comes from species biology (genome, catalog composition), not the wet-lab protocol, which is fixed to CIRI-long for both.
+
+## Recommendations
+
+- **Choose circFL-seq wet-lab protocol if you can, followed by CIRI-long, for maximum tool compatibility.** Both work with all 4 tools; circFL-seq protocol gave the highest recall, highest F1, and the highest BSJ-confirmation rate of the 3 protocols we tested (64.1% vs CIRI-long's 54.8%), and its read structure also allowed to better resolve isoform structure. isoCirc-protocol reads are the hardest for the tools to work with, and CIRI-long specifically is almost incompatible with them. See [Overall precision/recall](#overall-precisionrecall) and [Isoform detection](#isoform-detection) under [Same circRNAs, three wet-lab protocols](#same-circrnas-three-wet-lab-protocols).
+- **Use nanocirc itself rather than any single tool, and use its own quantification (`--run_quantify`) rather than a raw tool's built-in read counting.** All 4 tools are containerized and patched against real bugs found running them at scale, several silent rather than crashing (wrong fastq/genome argument wiring, a BAM filename mismatch that silently dropped intron-coverage output, a BioPython-version crash that only crashes on certain read alignments). A tool being good at *finding* the right circRNA doesn't mean its own built-in quantifier counts it well and native quantifiers can't quantify circRNAs tool didn't report. nanocirc's remap-based quantification is not dependent on which tool/tier found a locus. It applies the same counting method regardless of source, is stable across wet-lab approaches and has been benchmarked to agree well across tools/tiers and against ground truth (see [Quantification advice](#quantification-advice)). It also builds one shared, cross-sample circRNA catalog (`--run_crossrun_merge`) for a multi-sample count matrix that can be used with DESeq2 directly.
+- **For isoform-level differential expression, use the `balanced_recall` tier.** It is close to `discovery`'s isoform-family resolution while keeping meaningfully higher precision, so you get `discovery`'s isoform sensitivity with fewer false positives in the count matrix. `discovery` is an acceptable choice for locus-level differential expression, where getting the exact internal exon structure right isn't the point. See [Isoform detection](#isoform-detection).
+- **Exception: on isoCirc-protocol data, use `discovery` for isoform-level work instead of `balanced_recall`.** CircNick-LRS's own structure calls aren't trustworthy enough to count as consensus evidence, and CIRI-long is close to incompatible with isoCirc-protocol reads (see [Which tools work with my wet-lab protocol?](#which-tools-work-with-my-wet-lab-protocol)), so the only tools left to agree on a recovered isoform are circFL-seq and isoCirc, which rarely call the exact same structure independently. In our isoCirc-protocol benchmarks, `balanced_recall`'s isoform-family resolution dropped to 0%, while `discovery` still reached ~12%. See [Isoform detection](#isoform-detection).
+- **To verify a specific circRNA's exon boundaries before follow-up work (primers, probes, isoform-specific validation), check it against the `balanced_precision`/`high_confidence` sets.** Both only contain calls with strong cross-tool agreement on both BSJ and structure, so an entry present there has cleared more quality thresholds. See [Which tier should I use?](#which-tier-should-i-use) and [Isoform detection](#isoform-detection).
+
+## Which tools work with my wet-lab protocol?
+
+nanocirc runs 4 tools (CIRI-long, CircFL-seq, IsoCirc, CircNick-LRS) by default. Not every tool works with every wet-lab protocol's read structure. Set `--wet_lab` to your protocol (`ciri_long`, `circfl`, `isocirc`, or `circnick`) to use default settings for this type of data. `--wet_lab circnick` switches to CircNick-LRS alone: this is the one protocol where the other tools would certainly fail, since the other 3 tools expect rolling-circle reads with multiple copies of the circRNA per read, which is not the case for circNICK-lrs wet-lab data. `--wet_lab isocirc` turns CIRI-long off by default (see below). For every other protocol, `--wet_lab` does not turn any tool off by itself: so we suggest you to try with the default settings, but you can turn on/off tools with `--run_isocirc`, `--run_circfl`, `--run_circnick`, `--run_cirilong` set to `false`.
+
+| Your wet-lab protocol | Tools suggestion |
+| --- | --- |
+| CircNick-LRS | CircNick-LRS only |
+| CIRI-long | All 4 tools |
+| circFL-seq | All 4 tools |
+| isoCirc* | 3 tools, CIRI-long off by default** |
+| PacBio | protocol-dependent, turn CIRI-long off manually if isoCirc based*** |
+
+
+\* CircFL-seq also needs more memory than usual on isoCirc data: a first attempt at 250GB ran out of memory, a second attempt completed at 500GB, after about 5.5 days. Give CircFL-seq extra memory if your samples come from isoCirc-protocol reads.
+
+\*\* On real isoCirc-protocol CIRI-long did not finish in reasonable time, getting stuck on its collapse step for days. We tried it 3 times (5 days, then 10 days, then over 24 days), it still has not completed. It worked on simulated data and 10 pct of the real isoCirc dataset, so this issue may be dataset size dependent. To try CIRI-long on isoCirc data use `--run_cirilong true`. By our benchmark, leaving it off costs about 0.01 F1 at the `discovery`, `balanced_recall`, and `balanced_precision` tiers, and actually improves `high_confidence` (F1 almost doubles). 
+
+\*\*\* On real isoCirc-based PacBio human data, CIRI-long did not finish in reasonable time, getting stuck on its collapse step for days. We tried it 3 times (5 days, then 10 days, then over 24 days), it still has not completed. It worked on simulated data and 10 pct of the real isoCirc-based PacBio dataset, so this issue may be dataset size dependent. PacBio has no dedicated `--wet_lab` preset, as it is a sequencing platform, so select the preset based on the wet-lab approach and turn `--run_cirilong` off manually if you hit the same issue.
+
+## Same circRNAs, three wet-lab protocols
+
+We used one circRNA catalog (same circbase/circatlas composition, human genome, same abundances) and only changed the wet-lab protocol NanoSim is characterized from. Any difference in the results below comes from the wet-lab protocol characteristics.
+
+### Overall precision/recall
+
+<img src="images/benchmark/pr_scatter_equal_ciri_long.png" width="100%"/>
+<img src="images/benchmark/pr_scatter_equal_circfl.png" width="100%"/>
+<img src="images/benchmark/pr_scatter_equal_isocirc.png" width="100%"/>
+
+Same circRNA catalog, same tools, same tiers, only the protocol the reads were simulated from changes between these 3 plots.
+
+Mean precision (P) / recall (R) / F1 across 3 runs, exon-based matching, per nanocirc tier, plus each individual tool's own raw calls for comparison:
+
+| Tier / tool | CIRI-long protocol | circFL-seq protocol | isoCirc protocol (CIRI-long on) |
+| --- | --- | --- | --- |
+| IsoCirc alone | P 0.89 / R 0.14 / F1 0.25 | P 0.90 / R 0.19 / F1 0.32 | P 0.87 / R 0.08 / F1 0.15 |
+| CircFL-seq alone | P 0.79 / R 0.21 / F1 0.33 | P 0.77 / R 0.25 / F1 0.37 | P 0.74 / R 0.23 / F1 0.36 |
+| CIRI-long alone | P 0.74 / R 0.34 / F1 0.46 | P 0.77 / R 0.41 / F1 0.53 | P 0.77 / R 0.03 / F1 0.05 |
+| CircNick-LRS alone | P 0.24 / R 0.09 / F1 0.13 | P 0.24 / R 0.10 / F1 0.14 | P 0.22 / R 0.10 / F1 0.14 |
+| `discovery` | P 0.58 / R 0.45 / F1 0.50 | P 0.62 / R 0.53 / F1 0.57 | P 0.54 / R 0.28 / F1 0.37 |
+| `balanced_recall` | P 0.74 / R 0.42 / F1 0.53 | P 0.77 / R 0.51 / F1 0.61 | P 0.81 / R 0.25 / F1 0.38 |
+| `balanced_precision` | P 0.85 / R 0.22 / F1 0.35 | P 0.85 / R 0.28 / F1 0.42 | P 0.85 / R 0.09 / F1 0.17 |
+| `high_confidence` | P 0.89 / R 0.10 / F1 0.18 | P 0.91 / R 0.13 / F1 0.23 | P 0.92 / R 0.02 / F1 0.04 |
+
+### Ground truth coverage
+
+<img src="images/benchmark/equal_gt_coverage_stacked_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_gt_coverage_stacked_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_gt_coverage_stacked_isocirc.png" width="100%"/>
+
+Green+grey sum to 100% of ground truth (a caller's recall split), red stacks separately as false predictions.
+
+### circRNA type classification
+
+<img src="images/benchmark/equal_type_classification_ciri_long_exon.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_ciri_long_relaxed_bsj.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_ciri_long_strict_bsj.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_circfl_exon.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_circfl_relaxed_bsj.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_circfl_strict_bsj.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_isocirc_exon.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_isocirc_relaxed_bsj.png" width="100%"/>
+<img src="images/benchmark/equal_type_classification_isocirc_strict_bsj.png" width="100%"/>
+
+Same TP/FP-vs-GT breakdown as the GT coverage plot above, split by circRNA biotype.
+
+### Isoform detection
+
+Long-read protocols are used mainly to resolve internal exon structure, not just BSJ position. Among ground-truth loci where the same BSJ has more than one real isoform (isoform family), we checked how often each caller recovers the exact isoform, versus calls the right BSJ with the wrong structure, versus misses the BSJ entirely.
+
+<img src="images/benchmark/equal_isoform_detection_reciprocal_overlap_99_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_detection_reciprocal_overlap_99_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_detection_reciprocal_overlap_99_isocirc.png" width="100%"/>
+
+<img src="images/benchmark/equal_isoform_detection_reciprocal_overlap_90_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_detection_reciprocal_overlap_90_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_detection_reciprocal_overlap_90_isocirc.png" width="100%"/>
+
+Green+grey sum to 100% of the isoform-family ground truth; red shows the calls that found the right BSJ but didn't match internal structure criteria. 99% reciprocal exon overlap allows only trivial boundary noise; 90% allows a small sequence mismatch while still requiring the same structure, not a different one.
+
+<img src="images/benchmark/equal_isoform_family_completeness_reciprocal_overlap_99_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_family_completeness_reciprocal_overlap_99_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_family_completeness_reciprocal_overlap_99_isocirc.png" width="100%"/>
+
+<img src="images/benchmark/equal_isoform_family_completeness_reciprocal_overlap_90_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_family_completeness_reciprocal_overlap_90_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_isoform_family_completeness_reciprocal_overlap_90_isocirc.png" width="100%"/>
+
+Per family plot instead of per isoform: did the caller get every isoform in the family right, some of them, or none. Getting one isoform right while missing or misclassifying other is the most common outcome; fully resolving isoform family is a rare event for all tools.
+
+### Expression quantification and reproducibility
+
+<img src="images/benchmark/equal_expression_correlation_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_expression_correlation_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_expression_correlation_isocirc.png" width="100%"/>
+
+Pearson r, Spearman rho, R², read-count correlation against ground truth and cross-method agreement, per tool/tier.
+
+<img src="images/benchmark/equal_sensitivity_by_expression_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_sensitivity_by_expression_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_sensitivity_by_expression_isocirc.png" width="100%"/>
+
+Detection sensitivity by ground-truth expression tertile.
+
+<img src="images/benchmark/equal_reproducibility_pairs_ciri_long.png" width="100%"/>
+<img src="images/benchmark/equal_reproducibility_pairs_circfl.png" width="100%"/>
+<img src="images/benchmark/equal_reproducibility_pairs_isocirc.png" width="100%"/>
+
+Pairwise read-count agreement across every tool/tier combination, ground truth included.
+
+**Protocol results:**
+
+- **circFL-seq protocol generates reads that work well with all tools**, at every tier: highest recall, highest F1, and the highest BSJ-confirmation rate of the 3 protocols (64.1%).
+- **CIRI-long protocol reads are also compatible with all tools**, with a lower BSJ-confirmation rate (54.8%) and lower recall at every tier than circFL-seq.
+- **isoCirc protocol reads are the hardest for the tools to work with**, despite carrying the exact same ~9,800 underlying circRNAs. Its recall is the lowest of the 3 protocols at every tier, but precision remains comparable or higher to other wet-lab approaches. CIRI-long is almost incompatible with this wet lab protocol, and that was verified by running CIRI-long on real isoCIRC dataset as well - the tool never managed to finish the analysis on a full dataset.
+
+Because the circRNA catalog, its abundances, and the simulated read amount were identical across all 3 comparisons, this difference comes entirely from how each protocol's wet-lab induced error profile and read length characteristics change the reads NanoSim generates from them.
+
+**Recommendations**: if your protocol choice is flexible, circFL-seq or CIRI-long library prep will give nanocirc's `balanced`/`high_confidence` tiers meaningfully more usable recall than isoCirc protocol. If you already generated your reads and are working with isoCirc data, you can prioritise balanced_recall mode which reaches high precision on this read type and expect potential incopatibility with CIRI-long tool.
+
+#### isoCirc protocol: CIRI-long on vs the default (CIRI-long off)
+
+`--wet_lab isocirc` defaults `--run_cirilong` to `false` (see [Which tools work with my wet-lab protocol?](#which-tools-work-with-my-wet-lab-protocol) above). The isoCirc protocol column above used all 4 tools to estimate real performance of each tool; but we show here the results on the same dataset with CIRI-long left out, next to the all-4-tools numbers for comparison. 
+
+<img src="images/benchmark/pr_scatter_equal_isocirc_no_cirilong.png" width="100%"/>
+
+Mean precision (P) / recall (R) / F1 across the same 3 runs, exon-based matching, plus each individual tool's own raw calls:
+
+| Tier / tool | CIRI-long on (old) | CIRI-long off (new default) |
+| --- | --- | --- |
+| IsoCirc alone | P 0.87 / R 0.08 / F1 0.15 | P 0.87 / R 0.08 / F1 0.15 |
+| CircFL-seq alone | P 0.74 / R 0.23 / F1 0.36 | P 0.74 / R 0.23 / F1 0.36 |
+| CIRI-long alone | P 0.77 / R 0.03 / F1 0.05 | not run |
+| CircNick-LRS alone | P 0.22 / R 0.10 / F1 0.14 | P 0.22 / R 0.10 / F1 0.14 |
+| `discovery` | P 0.54 / R 0.28 / F1 0.37 | P 0.54 / R 0.28 / F1 0.37 |
+| `balanced_recall` | P 0.81 / R 0.25 / F1 0.38 | P 0.80 / R 0.25 / F1 0.38 |
+| `balanced_precision` | P 0.85 / R 0.09 / F1 0.17 | P 0.85 / R 0.09 / F1 0.17 |
+| `high_confidence` | P 0.92 / R 0.02 / F1 0.04 | P 0.92 / R 0.02 / F1 0.04 |
+
+CIRI-long was the weakest individual tool on this protocol (F1 0.05, far behind its performance on the CIRI-long/circFL-seq protocols).
+
+Dropping CIRI-long costs essentially nothing at any of the 4 tiers in this benchmark: P/R/F1 are identical or within 0.01 of each other with CIRI-long on vs off. Against the real-world risk documented above (CIRI-long hanging for 24+ days on real isoCirc-protocol data), this is why CIRI-long off is now the default for this protocol. If you wish to try to run it on isoCirc data despite the risk, you can turn it on yourself with `--run_cirilong true`.
+
+circNICK-lrs protocol reads were not tested, as all 3 other tools expect rolling-circle generated data with multiple copies of circRNA per read, making circNICK-lrs protocol compatible only with circNICK-lrs tool, thus it wouldn't benefit from nanocirc's consensus voting algorithm. You still can run circNICK-lrs inside the nanocirc pipeline and benefit from nanocirc's upstream patches to circNICK-lrs tool and nanocirc quantification approach.
+
+## Species benchmark: human vs mouse
+
+Wet-lab protocol is fixed (CIRI-long) for both species; each species uses its own genome, GTF, and circRNA catalog. Any difference below comes from species circRNA biology and genome/annotation differences, not the wet-lab protocol.
+
+### Overall precision/recall
+
+<img src="images/benchmark/pr_scatter_human.png" width="100%"/>
+<img src="images/benchmark/pr_scatter_mouse.png" width="100%"/>
+
+Mean precision (P) / recall (R) / F1 across 3 runs, exon-based matching, per nanocirc tier:
+
+| Tier | Human | Mouse |
+| --- | --- | --- |
+| `discovery` | P 0.58 / R 0.39 / F1 0.47 | P 0.65 / R 0.54 / F1 0.59 |
+| `balanced_recall` | P 0.74 / R 0.36 / F1 0.48 | P 0.85 / R 0.50 / F1 0.63 |
+| `balanced_precision` | P 0.85 / R 0.20 / F1 0.32 | P 0.94 / R 0.34 / F1 0.50 |
+| `high_confidence` | P 0.91 / R 0.09 / F1 0.17 | P 0.99 / R 0.18 / F1 0.30 |
+
+**What we see:**
+
+- **Mouse outperforms human at every tier**, on both precision and recall. The gap is largest at `balanced_precision` (F1 0.50 vs 0.32) and smallest at `discovery` (F1 0.59 vs 0.47).
+- Detailed CIRI-long-protocol breakdowns (ground truth coverage, false-positive characterization, type classification, quantification) for both species are in the [CIRI-long wet-lab protocol benchmark](#ciri-long-wet-lab-protocol-benchmark) section below.
+
+**Recommendations**: species-level differences are real and can be as large as the wet-lab-protocol differences above. Treat published tier-level precision/recall numbers as indicative, not as guarantees that transfer across species, and re-benchmark on your own species/catalog using nanocirc-benchmark if you work with a different one.
 
 ## Which tier should I use?
 
@@ -12,10 +195,10 @@ Each tier trades recall against precision differently. There is no single best t
 | ---- | ---------------------- | --------- |
 | **`discovery`** | Recall. Keeps almost every circRNA any tool found. | Highest false-positive rate: computational artefacts and incorrectly predicted structures will pass alongside real calls. |
 | **`high_confidence`** | Precision. Only calls with strong cross-tool agreement on both BSJ and structure or isoCirc calls that met defined read threshold survive. | Sacrifices recall to get the structure right: false positives are minimal, but the reduced set will miss real biology so it's not fit for exploratory studies. |
-| **`balanced_recall`** | A middle ground leaning recall. Cuts most of `discovery`'s false-positive rate while keeping reasonable recall. | Good default for exploratory analyses where getting the exact internal exon structure right, or an occasional false positive, isn't critical to the biological question. |
+| **`balanced_recall`** | A middle ground leaning recall. Cuts most of `discovery`'s false-positive rate while keeping reasonable recall, including on isoform structure (see [Isoform detection](#isoform-detection)). | Good default for exploratory analyses and for isoform-level questions, where `discovery` alone would carry more false positives for similar isoform resolution. |
 | **`balanced_precision`** | A middle ground leaning precision. Keeps recall relatively high while pushing precision further than `balanced_recall`. | Best for precision-leaning analyses that need to avoid false positives but still want decent recall, not just the aggressively small `high_confidence` set. |
 
-> **Recommendation:** use one of the two **balanced** tiers for most applications. Reserve `discovery` for exploratory passes over a dataset, and `high_confidence` for when you specifically need a small, near-certain set.
+> **Recommendation:** use one of the two **balanced** tiers for most applications. Reserve `discovery` for exploratory, locus-level studies, and `high_confidence` for when you specifically need a small, near-certain set.
 
 ## Quantification advice
 
@@ -25,7 +208,9 @@ Please note that for differential expression (read counts, DESeq2), `discovery`'
 
 For a multi-sample design, turn on `--run_crossrun_merge` alongside `--run_quantify` so every sample in a `group` is quantified against one shared catalog. Otherwise each sample gets its own catalog and rows don't line up across samples in the [DESeq2 matrix](output.md#deseq2-count-matrix).
 
-## Benchmark results
+## CIRI-long wet-lab protocol benchmark
+
+Dataset details: NanoSim characterized from real CIRI-long-protocol ONT control reads; circRNA composition fit from a general circbase/circatlas catalog. FP/FN characterization below is human only.
 
 ### Overall precision/recall
 
@@ -96,7 +281,27 @@ Missed circRNAs are generally longer (~3.6x), lower-expressed (~3x fewer reads),
 <img src="images/benchmark/type_classification_mouse_relaxed_bsj.png" width="100%"/>
 <img src="images/benchmark/type_classification_mouse_strict_bsj.png" width="100%"/>
 
-Same TP/FP-vs-GT breakdown as the GT coverage plot above, split by circRNA biotype (`eciRNA`, `EIciRNA`, `ciRNA`, `antisense`, `intergenic`, see [docs/output.md](output.md#circrna-type-classification)) instead of one bar per caller.
+Same TP/FP-vs-GT breakdown as the GT coverage plot above, split by circRNA biotype (`eciRNA`, `EIciRNA`, `ciRNA`, `antisense`, `intergenic`, see [docs/methods.md](methods.md#circrna-type-classification)) instead of one bar per caller.
+
+### Isoform detection
+
+Long-read protocols are used mainly to resolve internal exon structure, not just BSJ position. Among ground-truth loci where the same BSJ has more than one real isoform (isoform family), we checked how often each caller recovers the exact isoform, versus calls the right BSJ with the wrong structure, versus misses the BSJ entirely.
+
+<img src="images/benchmark/isoform_detection_reciprocal_overlap_99_human.png" width="100%"/>
+<img src="images/benchmark/isoform_detection_reciprocal_overlap_99_mouse.png" width="100%"/>
+
+<img src="images/benchmark/isoform_detection_reciprocal_overlap_90_human.png" width="100%"/>
+<img src="images/benchmark/isoform_detection_reciprocal_overlap_90_mouse.png" width="100%"/>
+
+Green+grey sum to 100% of the isoform-family ground truth; red shows the calls that found the right BSJ but didn't match internal structure criteria. 99% reciprocal exon overlap allows only trivial boundary noise; 90% allows a small sequence mismatch while still requiring the same structure, not a different one.
+
+<img src="images/benchmark/isoform_family_completeness_reciprocal_overlap_99_human.png" width="100%"/>
+<img src="images/benchmark/isoform_family_completeness_reciprocal_overlap_99_mouse.png" width="100%"/>
+
+<img src="images/benchmark/isoform_family_completeness_reciprocal_overlap_90_human.png" width="100%"/>
+<img src="images/benchmark/isoform_family_completeness_reciprocal_overlap_90_mouse.png" width="100%"/>
+
+Per family plot instead of per isoform: did the caller get every isoform in the family right, some of them, or none. Getting one isoform right while missing or misclassifying other is the most common outcome; fully resolving isoform family is a rare event for all tools.
 
 ### Expression quantification and reproducibility
 
@@ -123,4 +328,4 @@ Pairwise read-count agreement across every tool/tier combination, ground truth i
 
 ---
 
-For output file formats see [docs/output.md](output.md). For parameters see [docs/usage.md](usage.md).
+For output file formats see [docs/output.md](output.md). For parameters see [docs/usage.md](usage.md). For merge/scoring algorithms see [docs/methods.md](methods.md).

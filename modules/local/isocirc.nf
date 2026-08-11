@@ -4,7 +4,7 @@ process ISOCIRC {
 
     container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/20707975/files/nanocirc-isocirc-v1.0.sif?download=1' :
-        'quay.io/anrusakovich/isocirc:latest' }"
+        'quay.io/anrusakovich/isocirc@sha256:67be2788043dd94f90f8baccc371bdc12f06ab9791082757d0da1d462cc453ab' }"
 
     input:
     tuple val(meta), path(fastq)

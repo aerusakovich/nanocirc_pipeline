@@ -137,26 +137,7 @@ All pairwise combinations of active tools are compared using `bedtools intersect
 
 ### Merge algorithms
 
-All tools within a relaxed-BSJ group (coordinates within `--circrna_bsj_tolerance` bp) are treated as candidates for the same circRNA. A merge algorithm selects the representative BSJ and exon structure from those candidates.
-
-**BSJ selection** (all modes except `priority`): majority vote across all tools; ties broken by tool priority IsoCirc > CircFL-seq > CircNick-LRS > CIRI-long.
-
-**Structure selection** differs between modes and is described in the tables below.
-
-#### Default merge mode
-
-The pipeline uses `consensus_hybrid` as its merge algorithm.
-
-| Property | `consensus_hybrid` |
-| -------- | ------------------ |
-| BSJ | Majority vote across all tools |
-| Structure vote participants | Tools sharing the **exact winning BSJ** only |
-| Coordinate comparison | Absolute genomic coords (boundaries within `--circrna_bsj_tolerance` bp) |
-| Rebasing of minority-BSJ tools | **No**: tools with a different BSJ do not contribute to the structure vote |
-| Minority-BSJ tool handling | Emitted as separate isoform entries at their own BSJ coordinates |
-| Structure tie-break priority | IsoCirc > CircFL-seq > CIRI-long > CircNick-LRS |
-
-This design selects the most-supported exon structure among tools that agree on the BSJ, without shifting coordinates from tools that landed at a slightly different junction. Minority-BSJ isoforms are preserved in the output rather than silently discarded.
+The pipeline uses `consensus_hybrid` as its merge algorithm for all four tiers. See [docs/methods.md](methods.md#merge-algorithms) for how BSJ/structure voting and multi-isoform recovery work.
 
 #### Default output files
 
@@ -168,7 +149,7 @@ This design selects the most-supported exon structure among tools that agree on 
   - `<sample>_discovery_confidence.tsv`
   - `<sample>_balanced_precision.bed12`: hybrid + isocirc_only filter (F1 / precision-leaning - lowest FP for decent recall)
   - `<sample>_balanced_precision_confidence.tsv`
-  - `<sample>_balanced_recall.bed12`: consensus algorithm + trusted_only filter (best F1, recall-leaning)
+  - `<sample>_balanced_recall.bed12`: hybrid + trusted_only filter (best F1, recall-leaning)
   - `<sample>_balanced_recall_confidence.tsv`
   - `<sample>_high_confidence.bed12`: hybrid + high_only_isocirc filter (best precision, trusted subset)
   - `<sample>_high_confidence_confidence.tsv`
@@ -181,38 +162,18 @@ Four confidence-filtered outputs are published by default. After merging, each e
 | ------ | ---------------- | ------ | ---- | ------------- |
 | **`discovery`** | `consensus_hybrid` | none | Keep all entries | any |
 | **`balanced_precision`** | `consensus_hybrid` | `isocirc_only` | Drop entries where either axis is Low, unless the source is IsoCirc | ≥ Medium on both, or Low from IsoCirc |
-| **`balanced_recall`** | `consensus` | `trusted_only` | Drop entries where either axis is Low, unless the source is CIRI-long or IsoCirc | ≥ Medium on both, or Low from a trusted tool |
+| **`balanced_recall`** | `consensus_hybrid` | `trusted_only` | Drop entries where either axis is Low, unless the source is a trusted tool (`--circrna_trusted_tools`, default CIRI-long/IsoCirc/CircFL-seq) | ≥ Medium on both, or Low from a trusted tool |
 | **`high_confidence`** | `consensus_hybrid` | `high_only_isocirc` | Keep only entries where both axes are High, unless Low and the source is IsoCirc | High on both, or Low from IsoCirc |
 
 If `--run_quantify true` is also set, `discovery`/`balanced_recall`/`high_confidence` get a further post-quantification confidence filter on top of this table -- see [Quantification](#quantification) below. This filter does not run on `balanced_precision`: its "Low from IsoCirc" entries pass as-is, favoring recall, whereas `high_confidence` additionally requires read support there since that tier prioritizes precision over recall.
 
-`balanced_recall` uses the `consensus` merge algorithm (string-equality structure comparison, see below) rather than `consensus_hybrid`. It is the same trusted_only-filtered output previously published only under `--run_benchmark_modes` as `smart_consensus_filtered`.
-
 #### Additional merge modes (`--run_benchmark_modes`)
 
-Two further algorithms were tested and outperformed by `consensus_hybrid`/`consensus` in benchmark evaluation and are not published by default. This exists for internal benchmarking history, not for routine use, and is not maintained.
-
-| Mode | BSJ selection | Structure vote participants | Minority-BSJ rebasing | Minority-BSJ handling |
-| ---- | ------------- | -------------------------- | --------------------- | --------------------- |
-| `consensus_xstruct` | Majority vote | All tools in group | **Yes**, shifted to winning BSJ | Folded into structure vote |
-| `priority` | Highest-priority tool | Highest-priority tool | No | Separate isoforms at own coords |
-
-Key differences from `consensus_hybrid`:
-
-- **`consensus`** (used by `balanced_recall` above) uses string equality for structure comparison rather than coordinate similarity: two tools reporting the same exon structure with a 1 bp boundary difference are treated as distinct isoforms.
-- **`consensus_xstruct`** includes minority-BSJ tools in the structure vote by rebasing their exon coordinates to the winning BSJ. This can incorporate more structural information but may introduce coordinate imprecision when BSJ offset is non-trivial.
-- **`priority`** skips voting entirely: BSJ and structure come unconditionally from the single highest-priority tool present.
-
-With `--run_benchmark_modes`, `consensus` additionally publishes its `no_low` filter variant, and `consensus_xstruct`/`priority` each publish all four filter variants (unfiltered, `no_low`, `trusted_only`, `high_only`).
+With `--run_benchmark_modes`, three further merge algorithms (`consensus`, `consensus_xstruct`, `priority`) are also run and published, for internal benchmarking history rather than routine use. `consensus` additionally publishes its `no_low` filter variant; `consensus_xstruct`/`priority` each publish all four filter variants (unfiltered, `no_low`, `trusted_only`, `high_only`). See [docs/methods.md](methods.md#additional-modes---run_benchmark_modes-only) for how these algorithms differ from `consensus_hybrid`.
 
 ### Confidence TSV format
 
-All `*_confidence.tsv` files share a common format. Confidence is assessed on two **independent axes**:
-
-- **`bsj_consensus`**: what fraction of active tools agreed on this back-splice junction?
-- **`isoform_consensus`**: how well do tools agree on the exon boundaries of this isoform?
-
-Each axis is scored independently (1=Low, 2–3=Medium, 4=High based on binned percentage of tools) allowing a circRNA to have a well-supported BSJ but uncertain isoform structure, or vice versa.
+All `*_confidence.tsv` files share a common format. Confidence is assessed on two independent axes, `bsj_consensus` and `isoform_consensus`; see [docs/methods.md](methods.md#confidence-scoring) for how the scores/bins are computed.
 
 | Column               | Description                                                                 |
 | -------------------- | --------------------------------------------------------------------------- |
@@ -226,25 +187,18 @@ Each axis is scored independently (1=Low, 2–3=Medium, 4=High based on binned p
 | `<tool>_block_sizes` | BED12 block sizes from this tool's call                                     |
 | `<tool>_block_starts`| BED12 block starts from this tool's call                                    |
 | `isoform_confidence` | Number of tools with confirmed isoform overlap                              |
-| `bsj_score`          | Percentage of active tools detecting this BSJ, binned 1–4                  |
-| `isoform_score`      | Percentage of active tools with isoform support, binned 1–4 (min 1)        |
+| `bsj_score`          | BSJ tool-agreement, binned 1-4 (1 supporting tool always scores 1, all active tools agreeing always scores 4) |
+| `isoform_score`      | Isoform tool-agreement, binned the same way (min 1)                        |
 | `overlap_score`      | Average pairwise spliced-length overlap fraction, binned 1–4               |
 | `bsj_consensus`      | BSJ confidence label: `Low` (score 1), `Medium` (2–3), `High` (4)         |
 | `isoform_consensus`  | Isoform confidence label: `Low` (score 1), `Medium` (2–3), `High` (4)     |
 
-**Scoring bins (percentage of active tools):**
-
-| % of active tools | Score | Consensus |
-| ----------------- | ----- | --------- |
-| ≤ 25%             | 1     | Low       |
-| ≤ 50%             | 2     | Medium    |
-| ≤ 75%             | 3     | Medium    |
-| > 75%             | 4     | High      |
+See [docs/methods.md#scoring-bins](methods.md#scoring-bins) for how `bsj_score`/`isoform_score` map to `bsj_confidence`/`isoform_confidence` counts.
 
 > [!NOTE]
 > Consensus labels always reflect agreement among the tools that were actually run.
 > A `High` from 2 tools means both tools agreed. It is not mathematically equivalent
-> to `High` from 4 tools. The pipeline emits a warning when fewer than 4 tools are active.
+> to `High` from 4 tools.
 
 ---
 
@@ -296,41 +250,13 @@ The clean TSV (`*_clean.tsv`) is the primary output for downstream analysis. It 
 
 #### circRNA type classification
 
-Types are assigned by intersecting BSJ coordinates against gene and exon BED files derived from the GTF:
-
-| Type          | Definition                                                                          |
-| ------------- | ----------------------------------------------------------------------------------- |
-| `eciRNA`      | Same-strand gene overlap; the circRNA is fully covered by exonic regions (purely exonic) |
-| `EIciRNA`     | Same-strand gene overlap; overlaps exons but retains intronic content (exon–intron circRNA) |
-| `ciRNA`       | Same-strand gene overlap; no exon overlap (purely intronic)                         |
-| `antisense`   | Overlaps a gene on the opposite strand only                                         |
-| `intergenic`  | No overlap with any annotated gene on either strand                                 |
+The `type` column is one of `eciRNA`, `EIciRNA`, `ciRNA`, `antisense`, or `intergenic`. See [docs/methods.md](methods.md#circrna-type-classification) for how each is defined.
 
 ---
 
 ## Cross-run merge
 
-When `--run_crossrun_merge true` is set and the samplesheet contains a `group` column, all samples sharing the same group are merged together after per-sample analysis. Each run is treated as an independent caller. The same `consensus_hybrid` algorithm and confidence scoring used within a sample (across tools) is applied across runs (across samples).
-
-In plain terms, the four tiers mean:
-
-| Tier              | What it takes to be retained |
-| ----------------- | ----------------------------- |
-| **`discovery`**   | Detected by **at least 1 tool** in **at least 1 run**: maximum sensitivity, use for exploration, understanding it has the highest FP rate of all modes |
-| **`balanced_precision`** | **Multiple tools agreed** within a run AND **multiple runs** support it: recommended for precision leaning analyses |
-| **`balanced_recall`** | **Multiple tools agreed** within a run AND **multiple runs** support it: recommended for recall leaning analyses |
-| **`high_confidence`** | **All tools agreed** within runs AND **most/all runs** support it: maximum precision, lowest false positive rate |
-
-### How cross-run merge decides a locus
-
-Each candidate locus is scored with two separate votes, run independently:
-
-1. **BSJ vote**: counts how many different runs support the exact back-splice junction position, regardless of exon structure. This vote decides which tier a locus qualifies for (the count thresholds above).
-2. **Structure vote**: restricted to records at the winning BSJ position only, groups them by exon structure and ranks groups by total tool agreement. This vote decides the final isoform structure reported for the locus.
-
-Splitting these two votes avoids a locus's correct BSJ call being discarded just because a different run happened to report a slightly different exon structure at the same junction.
-
-A structure seen in only 1 run is dropped from the structure vote unless that run's own tool agreement meets `--crossrun_min_tool_agreement` (default `2`); structures backed by 2 or more runs are never dropped by this check. This removes weak, single-run structure calls without changing which tier the underlying BSJ qualifies for. Minority BSJ positions (backed by fewer runs than the winning position) each keep their own separate isoform entry rather than being merged away.
+When `--run_crossrun_merge true` is set and the samplesheet contains a `group` column, all samples sharing the same group are merged together after per-sample analysis, one tier at a time. See [docs/methods.md](methods.md#cross-run-merge) for how the BSJ/structure votes and per-tier count thresholds work.
 
 ### Output files
 
@@ -372,26 +298,15 @@ The `*_crossrun_confidence.tsv` has the same core columns as the per-sample conf
 
 ## Quantification
 
-When `--run_quantify true` is set, each sample's reads are remapped against a set of synthetic tandem-duplicated circle references built from a `discovery` (unfiltered, hybrid-consensus) locus catalog: a chunked remap-and-classify pass (tier1), an overlap-cluster rescue pass, then targeted low-coverage rescue (tier2) and gene-family/repeat-cluster rescue (tier3) for loci tier1 handled poorly.
+When `--run_quantify true` is set, each sample's reads are remapped against synthetic circle references built from a `discovery` locus catalog. See [docs/methods.md](methods.md#quantification) for the tiered remap-and-classify algorithm, catalog scope (`--run_crossrun_merge`), and the post-quantification confidence filter.
 
-**Which catalog a sample is quantified against depends on `--run_crossrun_merge`:**
-
-- **Off**: each sample is quantified against its own per-sample `discovery` catalog.
-- **On**: every sample in the same samplesheet `group` is quantified against **one shared catalog** built from that group's crossrun `discovery` output, so per-locus counts line up across samples in the group (needed for any downstream count-matrix comparison, e.g. differential expression). The circle references, chunk references, and gene-family similarity database are built once per group, not once per sample; only the actual read alignment/classification is per sample.
-
-Quantification counts are also appended onto each sample's per-tier clean TSV (`circrna_clean.py`/`crossrun_annotate.py` output) as three new columns, producing a `_clean_with_counts.tsv` table:
+Quantification counts are appended onto each sample's per-tier clean TSV (`circrna_clean.py`/`crossrun_annotate.py` output) as three new columns, producing a `_clean_with_counts.tsv` table:
 
 | Column                           | Description                                                              |
 | -------------------------------- | ------------------------------------------------------------------------ |
 | `nanocirc_quant_reads`           | Final read count for this locus (0 if quantification found no count)     |
 | `nanocirc_quant_tier`            | Which stage produced the count: `tier1`, `tier2`, `tier3`, or `tier1_gene_family_unresolved` |
 | `nanocirc_quant_low_confidence`  | `true` for gene-family/repeat-cluster loci tier3 could not resolve further |
-
-- `discovery` / `balanced_recall`: drops loci only CircNick-LRS called (`supporting_tools` is just `circnick`), with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
-- `balanced_precision` normally requires at least 2 tools to agree, but it keeps Isocirc only calls, based on the strength of IsoCirc's high precision.
-- `high_confidence`: normally requires most active tools to agree but also lets IsoCirc-only calls that are meeting read support threshold. This filter drops the IsoCirc-only entries with `nanocirc_quant_reads` at or below `--circrna_confident_min_reads`.
-
-
 
 <details markdown="1">
 <summary>Output files</summary>
@@ -405,18 +320,7 @@ Quantification counts are also appended onto each sample's per-tier clean TSV (`
 
 </details>
 
-All other intermediate quantification files (reference chunks, genome-wide alignments, the similarity database, per-tier raw counts before the final merge) are internal to each task's work directory and are not published.
-
-Quantification-specific parameters:
-
-| Parameter                       | Description                                                              | Default |
-| -------------------------------- | ------------------------------------------------------------------------ | ------- |
-| `--run_quantify`                 | Enable quantification                                                     | `false` |
-| `--quant_chunk_size`             | Loci per reference chunk for tier1                                       | `100`   |
-| `--quant_chunk_seed`             | Fixed shuffle seed for chunk assignment                                  | `42`    |
-| `--quant_locus_dedup_tolerance`  | bp tolerance (both start AND end) for near-duplicate locus dedup         | `10`    |
-| `--quant_min_old_tool_count`     | Min independent old-tool-count to flag a locus for tier2 rescue          | `50`    |
-| `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced_recall confidence filter (see above) | `2` |
+All other intermediate quantification files (reference chunks, genome-wide alignments, the similarity database, per-tier raw counts before the final merge) are internal to each task's work directory and are not published. For quantification parameters see [docs/usage.md](usage.md#quantification).
 
 ### DESeq2 count matrix
 
@@ -465,3 +369,7 @@ When `--run_quantify true` is set, the pipeline also builds one wide isoform x s
 </details>
 
 Nextflow automatically generates execution reports for every run. These are useful for troubleshooting, optimising resource requests, and recording the exact software versions used.
+
+---
+
+For parameters see [docs/usage.md](usage.md). For merge/scoring algorithms see [docs/methods.md](methods.md).

@@ -1,0 +1,70 @@
+nextflow_process {
+
+    name "Test Process FILTER_CONFIDENT_DISCOVERY"
+    script "../filter_confident_discovery.nf"
+    process "FILTER_CONFIDENT_DISCOVERY"
+
+    tag "filter_confident_discovery"
+    tag "modules_local"
+
+    test("drops the low-read circnick-only call in the discovery tier") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            process {
+                """
+                input[0] = [
+                    [id: 'test', category: 'discovery'],
+                    file("${projectDir}/modules/local/tests/data/filter_confident_discovery/clean_with_counts.tsv", checkIfExists: true),
+                    file("${projectDir}/modules/local/tests/data/filter_confident_discovery/unfiltered.bed12", checkIfExists: true)
+                ]
+                """
+            }
+        }
+
+        then {
+            def cleanTsv = path(process.out.clean[0][1]).text
+            def bedLines = path(process.out.bed[0][1]).readLines()
+            assertAll(
+                { assert process.success },
+                // header + 2 surviving rows: circnick-only zero-read call is dropped,
+                // the circnick+isocirc and cirilong calls are kept
+                { assert cleanTsv.readLines().size() == 3 },
+                { assert !cleanTsv.contains('chr1:1-100:+') },
+                { assert cleanTsv.contains('chr1:200-300:+') },
+                { assert cleanTsv.contains('chr1:400-500:+') },
+                { assert bedLines.size() == 2 }
+            )
+        }
+    }
+
+    test("high_confidence category does not apply the circnick-only rule") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            process {
+                """
+                input[0] = [
+                    [id: 'test', category: 'high_confidence'],
+                    file("${projectDir}/modules/local/tests/data/filter_confident_discovery/clean_with_counts.tsv", checkIfExists: true),
+                    file("${projectDir}/modules/local/tests/data/filter_confident_discovery/unfiltered.bed12", checkIfExists: true)
+                ]
+                """
+            }
+        }
+
+        then {
+            def cleanTsv = path(process.out.clean[0][1]).text
+            assertAll(
+                { assert process.success },
+                // circnick-only rule only fires for discovery/balanced_recall, so all 3 rows survive here
+                { assert cleanTsv.readLines().size() == 4 },
+                { assert cleanTsv.contains('chr1:1-100:+') }
+            )
+        }
+    }
+}

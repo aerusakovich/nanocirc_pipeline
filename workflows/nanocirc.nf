@@ -223,12 +223,14 @@ workflow NANOCIRC {
                 .mix( CIRCRNA_ANALYSIS.out.high_conf_bed.map       { m, b -> [m + [category: 'high_confidence'],    b] } )
         }
 
+        // balanced_precision included purely to republish its crossrun-broadcast
+        // bed12/tsv; should_drop() can never match this category, so it's a no-op filter.
         def ch_for_confident_filter = QUANT_APPEND_COUNTS.out.clean
-            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_recall', 'high_confidence'] }
+            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_recall', 'balanced_precision', 'high_confidence'] }
             .map    { meta, tsv -> [[meta.id, meta.category], meta, tsv] }
             .combine(
                 ch_bed_for_quant
-                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced_recall', 'high_confidence'] }
+                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced_recall', 'balanced_precision', 'high_confidence'] }
                     .map    { meta, bed -> [[meta.id, meta.category], bed] },
                 by: 0
             )
@@ -237,11 +239,7 @@ workflow NANOCIRC {
         FILTER_CONFIDENT_DISCOVERY ( ch_for_confident_filter )
         ch_versions = ch_versions.mix(FILTER_CONFIDENT_DISCOVERY.out.versions.first())
 
-        // balanced_precision never goes through FILTER_CONFIDENT_DISCOVERY, so
-        // its final clean_with_counts.tsv is still QUANT_APPEND_COUNTS.out.clean
-        def ch_final_clean_with_counts = QUANT_APPEND_COUNTS.out.clean
-            .filter { meta, _tsv -> meta.category == 'balanced_precision' }
-            .mix( FILTER_CONFIDENT_DISCOVERY.out.clean )
+        def ch_final_clean_with_counts = FILTER_CONFIDENT_DISCOVERY.out.clean
 
         def ch_deseq2_input = ch_final_clean_with_counts
             .map { meta, tsv -> [meta.category, meta, tsv] }

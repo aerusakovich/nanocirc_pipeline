@@ -7,3 +7,7 @@ testing/
 testing*
 *.pyc
 null/
+.nf-test/
+.nf-test.log
+bin/.pytest_cache/
+bin/tests/__pycache__/

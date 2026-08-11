@@ -130,6 +130,12 @@
                     "description": "Run circnick-lrs for circRNA detection.",
                     "fa_icon": "fas fa-play"
                 },
+                "wet_lab": {
+                    "type": "string",
+                    "enum": ["ciri_long", "circfl", "isocirc", "circnick"],
+                    "description": "Wet-lab protocol preset. circnick sets run_isocirc/run_circfl/run_cirilong/run_circnick to run CircNick-LRS alone. isocirc defaults run_cirilong to false (real isoCirc-protocol data has made CIRI-long hang for 24+ days). CLI --run_* still overrides it.",
+                    "fa_icon": "fas fa-flask"
+                },
                 "circnick_species": {
                     "type": "string",
                     "description": "Species for circnick-lrs: 'mouse' or 'human'. Required when --run_circnick is set.",
@@ -165,6 +171,12 @@
                     "description": "Minimum reciprocal spliced-length overlap fraction for isoform confidence scoring.",
                     "fa_icon": "fas fa-percentage"
                 },
+                "circrna_trusted_tools": {
+                    "type": "string",
+                    "default": "cirilong,isocirc,circfl",
+                    "description": "balanced_recall's trusted_only filter: comma-separated tools whose Low-confidence single-tool calls still get rescued.",
+                    "fa_icon": "fas fa-filter"
+                },
                 "circrna_confident_min_reads": {
                     "type": "integer",
                     "default": 2,
@@ -189,7 +201,7 @@
                     "type": "boolean",
                     "default": false,
                     "hidden": true,
-                    "description": "Also publish all research variants: legacy strict/relaxed/exon merge modes plus raw xstruct, priority, and all trusted-only/no-low combinations.",
+                    "description": "Also compute and publish all research variants: legacy strict/relaxed/exon merge modes plus raw consensus/xstruct/priority and their no_low/trusted_only/high_only combinations.",
                     "fa_icon": "fas fa-flask"
                 }
             }

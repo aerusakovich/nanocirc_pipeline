@@ -1,0 +1,78 @@
+nextflow_process {
+
+    name "Test Process CIRCRNA_SMART_MERGE"
+    script "../circrna_smart_merge.nf"
+    process "CIRCRNA_SMART_MERGE"
+
+    tag "circrna_smart_merge"
+    tag "modules_local"
+
+    test("groups two tools' near-identical BSJ calls, isocirc's coordinates win the BSJ vote") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            process {
+                """
+                input[0] = [
+                    [id: 'test'],
+                    ['cirilong', 'isocirc'],
+                    [
+                        file("${projectDir}/modules/local/tests/data/circrna_smart_merge/cirilong.bed12", checkIfExists: true),
+                        file("${projectDir}/modules/local/tests/data/circrna_smart_merge/isocirc.bed12", checkIfExists: true)
+                    ]
+                ]
+                input[1] = [ [id: 'test'], [] ]
+                input[2] = 2
+                """
+            }
+        }
+
+        then {
+            // start/end are within the default 5bp tolerance, so both calls fall into one
+            // group_relaxed() group, but their exact BSJ coordinates differ (999-2000 vs
+            // 1000-2000), so each stays its own (BSJ, structure) entry: one 'main', one
+            // 'iso1'. Neither tool has a majority (1 vote each), so BSJ_PRIORITY breaks the
+            // tie -- isocirc outranks cirilong, so isocirc's coordinates become 'main'.
+            def consensusBed = path(process.out.consensus_bed[0][1]).readLines()
+            assertAll(
+                { assert process.success },
+                { assert consensusBed.size() == 2 },
+                { assert consensusBed.any { it.split('\t')[3] == 'chr1:1000-2000:+' } },
+                { assert consensusBed.any { it.split('\t')[3] == 'chr1:999-2000:+|iso1' } },
+                { assert path(process.out.hybrid_bed[0][1]).readLines().size() >= 1 },
+                { assert path(process.out.consensus_xstruct_bed[0][1]).readLines().size() == 2 },
+                { assert path(process.out.priority_bed[0][1]).readLines().size() == 2 }
+            )
+        }
+    }
+
+    test("single active tool still produces all output files (no crash on n_active=1)") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+            }
+            process {
+                """
+                input[0] = [
+                    [id: 'test'],
+                    ['cirilong'],
+                    [ file("${projectDir}/modules/local/tests/data/circrna_smart_merge/cirilong.bed12", checkIfExists: true) ]
+                ]
+                input[1] = [ [id: 'test'], [] ]
+                input[2] = 1
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert path(process.out.consensus_bed[0][1]).readLines().size() == 1 },
+                { assert path(process.out.hybrid_bed[0][1]).readLines().size() == 1 }
+            )
+        }
+    }
+}

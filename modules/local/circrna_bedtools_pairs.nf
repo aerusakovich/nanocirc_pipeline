@@ -12,7 +12,7 @@ process CIRCRNA_BEDTOOLS_PAIRS {
     // bed_files  : list of BED12 paths in the same order as tool_names
 
     output:
-    tuple val(meta), path("*_vs_*.txt"), emit: pairs
+    tuple val(meta), path("*_vs_*.txt"), optional: true, emit: pairs
     path  "versions.yml",               emit: versions
 
     when:

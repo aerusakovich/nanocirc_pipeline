@@ -6,12 +6,11 @@ Adds three confidence components and two independent consensus labels to the
 confidence TSV produced by merge_circrna.py / smart_merge.py.
 
 Components:
-    bsj_score       : percentage of active tools detecting the BSJ → 1-4
-                        ≤ 25%  → 1
-                        ≤ 50%  → 2
-                        ≤ 75%  → 3
-                        > 75%  → 4
-    isoform_score   : percentage of active tools supporting this exact exon
+    bsj_score       : number of tools detecting the BSJ → 1-4
+                        1 tool    → 1
+                        2 tools   → 2
+                        3+ tools  → 4
+    isoform_score   : number of tools supporting this exact exon
                       structure → 1-4  (same binning, minimum 1)
     overlap_score   : average pairwise spliced-length overlap fraction → 1-4
                         < 25%  → 1
@@ -20,7 +19,7 @@ Components:
                         ≥ 75%  → 4
                       1 if no pairs (single tool)
 
-Independent consensus labels (score 1→Low, 2-3→Medium, 4→High):
+Independent consensus labels (score 1→Low, 2→Medium, 4→High):
     bsj_consensus     : quality of BSJ detection across tools
     isoform_consensus : quality of exon-structure agreement across tools
 
@@ -32,8 +31,16 @@ filter_confidence.py uses them independently:
   trusted_only → removes Low bsj_consensus unless from a trusted tool
                  (CIRI-long / IsoCirc); also removes Low isoform_consensus
 
-NOTE: scores reflect agreement among the tools that were run.
-      Running fewer than 4 tools reduces scoring resolution.
+NOTE: bsj_score/isoform_score is a fixed scale (1 tool always Low, 3+ tools
+      always High), independent of how many tools actually ran, so a given
+      score means the same amount of evidence in every run. In a single-tool
+      run, every call maxes out at 1 supporting tool, so bsj_consensus and
+      isoform_consensus are always Low: balanced_recall/balanced_precision/
+      high_confidence require better than Low on both axes (with narrow
+      exceptions for IsoCirc/CIRI-long that a single other tool doesn't
+      qualify for), so they come back empty by design. Only discovery, plus
+      its post-quantification read-count filter (filter_confident_discovery.py,
+      --run_quantify), gives a single-tool run a meaningful filtered output.
 
 Usage:
     python3 add_isoform_confidence.py \\
@@ -52,11 +59,13 @@ import argparse
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--confidence",   required=True)
-    parser.add_argument("--pairs",        required=True, nargs="+")
+    parser.add_argument("--pairs",        default=[], nargs="*",
+                        help="Pairwise overlap files. Empty for a single-tool run "
+                             "(n_active=1): every score falls back to its 'no pairs' default.")
     parser.add_argument("--output",       required=True)
     parser.add_argument("--min_overlap",  type=float, default=0.95)
     parser.add_argument("--n_active",     type=int,   default=4,
-                        help="Number of active detection tools (used for percentage-based scoring)")
+                        help="Number of active detection tools")
     parser.add_argument("--strip_isoform_suffix", action="store_true", default=False,
                         help="Strip '|iso*' suffix from bsj_id before pair lookups "
                              "(required for smart_merge TSVs where isoforms are labelled "
@@ -91,18 +100,16 @@ def spliced_length(block_sizes_str):
 
 
 def count_to_score(count, n_total):
-    """Convert count/n_total ratio to 1-4 score using percentage bins."""
-    if n_total == 0:
+    """1 tool is Low, 2 is Medium, 3+ is High.
+    A given score means the same amount of evidence in every run, regardless of
+    how many tools were active."""
+    if count <= 0:
         return 1
-    pct = count / n_total
-    if pct <= 0.25:
+    if count == 1:
         return 1
-    elif pct <= 0.50:
+    if count == 2:
         return 2
-    elif pct <= 0.75:
-        return 3
-    else:
-        return 4
+    return 4
 
 
 def frac_to_overlap_score(avg_frac):

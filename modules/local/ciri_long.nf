@@ -6,7 +6,7 @@ process CIRI_LONG {
 
     container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/20707975/files/nanocirc-ciri-long-v1.0.sif?download=1' :
-        'quay.io/anrusakovich/ciri-long:latest' }"
+        'quay.io/anrusakovich/ciri-long@sha256:9b4628aeb0ef95195cfc9a0522248168d74fc02092205d70b300adfd985e7794' }"
 
     input:
     tuple val(meta), path(fastq)

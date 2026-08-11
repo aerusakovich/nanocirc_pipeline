@@ -6,7 +6,7 @@ process CIRCFL_SEQ {
 
     container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/20707975/files/nanocirc-circfl-seq-v1.0.sif?download=1' :
-        'quay.io/anrusakovich/circfl-seq:latest' }"
+        'quay.io/anrusakovich/circfl-seq@sha256:61a34e11ef1b5237f1acb45f39877b2a5efc1414a71625635a395ac36d2446b7' }"
 
     input:
     tuple val(meta), path(fastq)

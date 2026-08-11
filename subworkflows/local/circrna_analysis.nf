@@ -23,8 +23,10 @@ include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_CONSENSUS_NO_LOW   } from 
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_CONSENSUS_TRUSTED  } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_XSTRUCT_NO_LOW     } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_XSTRUCT_TRUSTED    } from '../../modules/local/circrna_confidence_filter'
+include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_XSTRUCT_HIGH_ONLY  } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_PRIORITY_NO_LOW    } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_PRIORITY_TRUSTED   } from '../../modules/local/circrna_confidence_filter'
+include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_PRIORITY_HIGH_ONLY } from '../../modules/local/circrna_confidence_filter'
 include { GTF_TO_FEATURE_BED     } from '../../modules/local/gtf_to_feature_bed'
 include { CIRCRNA_FINALIZE       } from '../../modules/local/circrna_finalize'
 include { CIRCRNA_ANNOTATE       } from './circrna_annotate'
@@ -183,13 +185,14 @@ workflow CIRCRNA_ANALYSIS {
         )
     }
 
-    if (ch_n_active >= 2) {
+    if (ch_n_active >= 1) {
 
         CIRCRNA_BEDTOOLS_PAIRS ( ch_beds_collected )
         ch_versions = ch_versions.mix(CIRCRNA_BEDTOOLS_PAIRS.out.versions.first())
 
         def ch_for_merge = ch_beds_collected
-            .join(CIRCRNA_BEDTOOLS_PAIRS.out.pairs, by: 0)
+            .join(CIRCRNA_BEDTOOLS_PAIRS.out.pairs, by: 0, remainder: true)
+            .map { meta, tool_names, bed_files, pairs -> [ meta, tool_names, bed_files, pairs ?: [] ] }
 
         // Legacy benchmark modes, see misc/legacy_modules/
         if (runBenchmarkModes) {
@@ -214,25 +217,22 @@ workflow CIRCRNA_ANALYSIS {
         )
         ch_versions = ch_versions.mix(CIRCRNA_SMART_MERGE.out.versions.first())
 
-        // Build per-mode filter input channels. Both use hybrid as input
         def ch_hybrid = CIRCRNA_SMART_MERGE.out.hybrid_bed
             .join(CIRCRNA_SMART_MERGE.out.hybrid_conf, by: 0)
 
         def ch_for_balanced        = ch_hybrid.map { meta, bed, tsv -> [ meta + [category: 'hybrid'], bed, tsv ] }
         def ch_for_high_confidence = ch_hybrid.map { meta, bed, tsv -> [ meta + [category: 'hybrid'], bed, tsv ] }
+        def ch_for_consensus_trusted = ch_hybrid.map { meta, bed, tsv -> [ meta + [category: 'hybrid'], bed, tsv ] }
 
-        CIRCRNA_FILTER_BALANCED        ( ch_for_balanced )
-        CIRCRNA_FILTER_HIGH_CONFIDENCE ( ch_for_high_confidence )
+        CIRCRNA_FILTER_BALANCED          ( ch_for_balanced )
+        CIRCRNA_FILTER_HIGH_CONFIDENCE   ( ch_for_high_confidence )
+        CIRCRNA_FILTER_CONSENSUS_TRUSTED ( ch_for_consensus_trusted.map { meta, bed, tsv -> [ meta + [category: 'balanced_recall'], bed, tsv ] } )
         ch_versions = ch_versions.mix(CIRCRNA_FILTER_BALANCED.out.versions.first())
+        ch_versions = ch_versions.mix(CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.versions.first())
 
-        // consensus_bed/consensus_conf are always emitted by CIRCRNA_SMART_MERGE
-        // regardless of --run_benchmark_modes; balanced_recall (trusted_only-filtered
-        // consensus) is a default-pipeline tier, not benchmark-only.
+        // Only used below by the benchmark-mode smart_consensus_no_low diagnostic.
         def ch_consensus = CIRCRNA_SMART_MERGE.out.consensus_bed
             .join(CIRCRNA_SMART_MERGE.out.consensus_conf, by: 0)
-
-        CIRCRNA_FILTER_CONSENSUS_TRUSTED ( ch_consensus.map { meta, bed, tsv -> [ meta + [category: 'balanced_recall'], bed, tsv ] } )
-        ch_versions = ch_versions.mix(CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.versions.first())
 
         if (runBenchmarkModes) {
             def ch_xstruct = CIRCRNA_SMART_MERGE.out.consensus_xstruct_bed
@@ -244,8 +244,10 @@ workflow CIRCRNA_ANALYSIS {
             CIRCRNA_FILTER_CONSENSUS_NO_LOW  ( ch_consensus.map { meta, bed, tsv -> [ meta + [category: 'smart_consensus_no_low'],      bed, tsv ] } )
             CIRCRNA_FILTER_XSTRUCT_NO_LOW    ( ch_xstruct.map   { meta, bed, tsv -> [ meta + [category: 'smart_consensus_xstruct_no_low'],  bed, tsv ] } )
             CIRCRNA_FILTER_XSTRUCT_TRUSTED   ( ch_xstruct.map   { meta, bed, tsv -> [ meta + [category: 'smart_consensus_xstruct_filtered'], bed, tsv ] } )
+            CIRCRNA_FILTER_XSTRUCT_HIGH_ONLY ( ch_xstruct.map   { meta, bed, tsv -> [ meta + [category: 'smart_consensus_xstruct_high_only'], bed, tsv ] } )
             CIRCRNA_FILTER_PRIORITY_NO_LOW   ( ch_for_priority.map { meta, bed, tsv -> [ meta + [category: 'smart_priority_no_low'],    bed, tsv ] } )
             CIRCRNA_FILTER_PRIORITY_TRUSTED  ( ch_for_priority.map { meta, bed, tsv -> [ meta + [category: 'smart_priority_filtered'],  bed, tsv ] } )
+            CIRCRNA_FILTER_PRIORITY_HIGH_ONLY ( ch_for_priority.map { meta, bed, tsv -> [ meta + [category: 'smart_priority_high_only'], bed, tsv ] } )
         }
 
         // Discovery is hybrid emitted directly (no filter applied)
@@ -274,14 +276,10 @@ workflow CIRCRNA_ANALYSIS {
             // Versions are collected automatically, no ch_versions mixing needed.
 
             // ── Finalize: type + expression + clean TSV ─────────────────────────────
-            // annotated_tsv has N items per sample (one per category); expression files have 1.
-            // Use combine(by:0) for N:1 matching, not join() which is 1:1 only.
-            // circfl emits a list (mRG + RG pass files); pick mRG when present.
-            // ciri_long uses optional:true, fill missing samples with a placeholder via
-            // remainder join. Each tool's placeholder needs its own distinct file name:
-            // when 2+ tools are inactive at once, combine(by:0) stages all 4 expression
-            // channels into the same CIRCRNA_FINALIZE task, and Nextflow errors on an
-            // input file name collision if two of them both stage a file named 'NO_FILE'.
+            // annotated_tsv: N items/sample. expr channels: 1/sample. combine(by:0), not join().
+            // circfl: pick mRG pass file when present.
+            // Placeholder file names must be distinct per tool: Nextflow errors on
+            // duplicate staged filenames when 2+ tools are inactive at once.
             def ch_iso_expr  = runIsocirc  ? ISOCIRC.out.expr.map { m, f -> [m.id, f] }
                                            : ch_fastq.map { m, _f -> [m.id, file('NO_FILE_ISOCIRC')] }
             def ch_fl_expr   = runCircfl   ? CIRCFL_SEQ.out.expr.map { m, files ->
@@ -327,20 +325,25 @@ workflow CIRCRNA_ANALYSIS {
     cirilong_reads  = ch_cirilong_reads
     circnick_native = ch_circnick_native
 
-    // Discovery: hybrid, all isoforms, unfiltered
-    discovery_bed  = ch_n_active >= 2 ? CIRCRNA_SMART_MERGE.out.hybrid_bed  : channel.empty()
-    discovery_conf = ch_n_active >= 2 ? CIRCRNA_SMART_MERGE.out.hybrid_conf : channel.empty()
+    // Discovery: hybrid, all isoforms, unfiltered. With 1 tool active, every
+    // score is trivially "100% of active tools agree" (see add_isoform_confidence.py's
+    // count_to_score), so all 4 tiers below end up identical to this: there is no
+    // second tool to disagree with, so nothing is ever Low/Medium.
+    discovery_bed  = ch_n_active >= 1 ? CIRCRNA_SMART_MERGE.out.hybrid_bed  : channel.empty()
+    discovery_conf = ch_n_active >= 1 ? CIRCRNA_SMART_MERGE.out.hybrid_conf : channel.empty()
     // Balanced (precision): hybrid + no_low filter
-    balanced_bed   = ch_n_active >= 2 ? CIRCRNA_FILTER_BALANCED.out.bed        : channel.empty()
-    balanced_conf  = ch_n_active >= 2 ? CIRCRNA_FILTER_BALANCED.out.conf       : channel.empty()
-    // Balanced (recall): consensus algorithm + trusted_only filter
-    balanced_recall_bed  = ch_n_active >= 2 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.bed  : channel.empty()
-    balanced_recall_conf = ch_n_active >= 2 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.conf : channel.empty()
+    balanced_bed   = ch_n_active >= 1 ? CIRCRNA_FILTER_BALANCED.out.bed        : channel.empty()
+    balanced_conf  = ch_n_active >= 1 ? CIRCRNA_FILTER_BALANCED.out.conf       : channel.empty()
+    // Balanced (recall): hybrid + trusted_only filter
+    balanced_recall_bed  = ch_n_active >= 1 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.bed  : channel.empty()
+    balanced_recall_conf = ch_n_active >= 1 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.conf : channel.empty()
     // High-confidence: hybrid + high_only filter
-    high_conf_bed  = ch_n_active >= 2 ? CIRCRNA_FILTER_HIGH_CONFIDENCE.out.bed  : channel.empty()
-    high_conf_conf = ch_n_active >= 2 ? CIRCRNA_FILTER_HIGH_CONFIDENCE.out.conf : channel.empty()
+    high_conf_bed  = ch_n_active >= 1 ? CIRCRNA_FILTER_HIGH_CONFIDENCE.out.bed  : channel.empty()
+    high_conf_conf = ch_n_active >= 1 ? CIRCRNA_FILTER_HIGH_CONFIDENCE.out.conf : channel.empty()
 
-    // Legacy merge modes (--run_benchmark_modes)
+    // Legacy merge modes (--run_benchmark_modes) are strict/relaxed/exon
+    // union+intersection across >=2 tools' raw calls; not meaningful with 1
+    // tool, so these stay off for a single-tool run even with the flag set.
     strict_union_bed    = (ch_n_active >= 2 && runBenchmarkModes) ? CIRCRNA_MERGE.out.strict_union_bed    : channel.empty()
     strict_union_conf   = (ch_n_active >= 2 && runBenchmarkModes) ? CIRCRNA_MERGE.out.strict_union_conf   : channel.empty()
     strict_inter_bed    = (ch_n_active >= 2 && runBenchmarkModes) ? CIRCRNA_MERGE.out.strict_inter_bed    : channel.empty()
@@ -354,10 +357,10 @@ workflow CIRCRNA_ANALYSIS {
     exon_inter_bed      = (ch_n_active >= 2 && runBenchmarkModes) ? CIRCRNA_EXON_MERGE.out.exon_inter_bed  : channel.empty()
     exon_inter_conf     = (ch_n_active >= 2 && runBenchmarkModes) ? CIRCRNA_EXON_MERGE.out.exon_inter_conf : channel.empty()
 
-    annotated_gff = (!skipAnnotation && ch_n_active >= 2) ? CIRCRNA_ANNOTATE.out.annotated_gff : channel.empty()
-    spliced_fasta = (!skipAnnotation && ch_n_active >= 2) ? CIRCRNA_ANNOTATE.out.spliced_fasta : channel.empty()
-    annotated_tsv = (!skipAnnotation && ch_n_active >= 2) ? CIRCRNA_ANNOTATE.out.annotated_tsv : channel.empty()
-    clean_tsv     = (!skipAnnotation && ch_n_active >= 2) ? CIRCRNA_FINALIZE.out.clean          : channel.empty()
+    annotated_gff = (!skipAnnotation && ch_n_active >= 1) ? CIRCRNA_ANNOTATE.out.annotated_gff : channel.empty()
+    spliced_fasta = (!skipAnnotation && ch_n_active >= 1) ? CIRCRNA_ANNOTATE.out.spliced_fasta : channel.empty()
+    annotated_tsv = (!skipAnnotation && ch_n_active >= 1) ? CIRCRNA_ANNOTATE.out.annotated_tsv : channel.empty()
+    clean_tsv     = (!skipAnnotation && ch_n_active >= 1) ? CIRCRNA_FINALIZE.out.clean          : channel.empty()
 
     versions = ch_versions
 }

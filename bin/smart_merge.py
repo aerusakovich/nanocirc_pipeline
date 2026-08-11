@@ -6,7 +6,8 @@ Merges circRNA calls from several tools into one consensus BED12 file.
 Calls are grouped by relaxed BSJ (backsplice junction), meaning start and
 end can differ by up to tolerance bp, and must be on the same strand.
 
-Four modes:
+Four modes. Only smart_consensus_hybrid runs by default; the other three
+need --benchmark_modes (skipped entirely in cross-run mode):
 
   smart_consensus         BSJ by majority vote (ties go to BSJ priority).
                           Structure by majority vote among tools that share
@@ -25,7 +26,12 @@ Four modes:
   smart_consensus_hybrid  Same BSJ vote. Structure vote uses only tools at
                           the exact winning BSJ (no rebasing). Tools with a
                           different BSJ get their own isoform entry. This
-                          mode makes the pipeline's 'discovery' output.
+                          mode makes the pipeline's 'discovery' output (and,
+                          after tier filtering, the other 3 tiers too).
+                          IsoCirc/circFL/CIRI-long also keep every other
+                          distinct isoform call they made at the winning
+                          BSJ, not just their best one (see MULTI_ISO_TOOLS).
+                          CircNick-LRS still keeps only its single best call.
 
   smart_priority          BSJ always from the BSJ priority tool. Structure
                           always from the struct priority tool.
@@ -36,7 +42,7 @@ and so on. The BED12 name field shows this: 'chr:start-end:strand' for
 main, 'chr:start-end:strand|iso1' for the others.
 
 BSJ priority order:
-    IsoCirc > circFL > CircNick-LRS > CIRI-long
+    IsoCirc > circFL > CIRI-long > CircNick-LRS
 
 Exon structure priority order:
     IsoCirc > circFL > CIRI-long > CircNick-LRS
@@ -89,6 +95,11 @@ def parse_args(args=None):
                         'always kept. Default 2.')
     p.add_argument('--outdir',     default='.',
                    help='Output directory (default: current dir)')
+    p.add_argument('--benchmark_modes', action='store_true',
+                   help='Also compute consensus/consensus_xstruct/priority (legacy '
+                        'modes, only used by --run_benchmark_modes diagnostics). '
+                        'Ignored in cross-run mode (--conf_tsvs), where these are '
+                        'never read.')
     return p.parse_args(args)
 
 
@@ -611,6 +622,63 @@ def collect_entries_consensus_hybrid(tool_best, struct_tolerance):
     return entries
 
 
+# Tools whose own isoform calls are trustworthy enough to keep more than one
+# per locus instead of collapsing to best_record() before the vote.
+# CircNick-LRS is excluded: near-zero true-isoform recovery even under a
+# loose overlap threshold, so a second call is likelier wrong than real.
+MULTI_ISO_TOOLS = {'isocirc', 'circfl', 'cirilong'}
+
+
+def collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance):
+    """BSJ vote and winning ('main') structure vote same as
+    collect_entries_consensus_hybrid, from one best_record() per tool.
+
+    Then, for every tool in MULTI_ISO_TOOLS, any of its other calls at the
+    winning BSJ that don't already match an existing entry within
+    struct_tolerance get appended as their own isoform entry.
+
+    tool_map: {tool: [record, ...]}, the full un-collapsed per-tool record
+    list for this relaxed-BSJ group (same shape write_outputs() already
+    builds groups into, before it collapses to tool_best).
+    """
+    tool_best = {tool: best_record(recs) for tool, recs in tool_map.items()}
+    entries = collect_entries_consensus_hybrid(tool_best, struct_tolerance)
+
+    main_entry = entries[0]
+    winning_bsj = (main_entry['start'], main_entry['end'])
+    existing_structs = [absolute_exon_coords(e['struct_rec']) for e in entries
+                         if (e['start'], e['end']) == winning_bsj]
+
+    iso_n = max((int(e['isoform_label'][3:]) for e in entries
+                 if e['isoform_label'].startswith('iso')), default=0)
+
+    for tool in MULTI_ISO_TOOLS:
+        recs = tool_map.get(tool, [])
+        if len(recs) <= 1:
+            continue
+        for rec in recs:
+            if bsj_key(rec) != winning_bsj or rec is tool_best.get(tool):
+                continue
+            abs_struct = absolute_exon_coords(rec)
+            if any(abs_struct_similar(abs_struct, es, struct_tolerance) for es in existing_structs):
+                continue
+            iso_n += 1
+            entries.append({
+                'start':         winning_bsj[0],
+                'end':           winning_bsj[1],
+                'struct_rec':    rec,
+                'bsj_src':       main_entry['bsj_src'],
+                'struct_src':    tool,
+                'bsj_agree':     main_entry['bsj_agree'],
+                'struct_agree':  1,
+                'isoform_label': f'iso{iso_n}',
+                'isoform_tools': [tool],
+            })
+            existing_structs.append(abs_struct)
+
+    return entries
+
+
 def collect_entries_priority(tool_best):
     """Collect all isoform entries for smart_priority mode.
 
@@ -847,8 +915,13 @@ def bed12_line(chrom, start, end, name, score, strand,
     ])
 
 
-def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_run_mode=False, min_corroboration=2):
+def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_run_mode=False,
+                   min_corroboration=2, benchmark_modes=False):
     os.makedirs(outdir, exist_ok=True)
+
+    # consensus/consensus_xstruct/priority: legacy modes, only read under
+    # --run_benchmark_modes, never in cross_run_mode.
+    run_legacy_modes = benchmark_modes and not cross_run_mode
 
     tool_flags  = active_tools
     tool_blocks = []
@@ -872,6 +945,9 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
         'priority':          {'bed': [], 'tsv': ['\t'.join(header)]},
     }
 
+    computed_modes = {'consensus', 'consensus_xstruct', 'consensus_hybrid', 'priority'} \
+        if run_legacy_modes else {'consensus_hybrid'}
+
     for group_key, tool_map in sorted(groups.items()):
         chrom, _, _, strand = group_key
 
@@ -888,15 +964,20 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
             else:
                 blocks += ['.', '.']
 
-        xstruct_fn = lambda tb: collect_entries_consensus_xstruct(tb, struct_tolerance)
-        hybrid_fn  = (lambda tb: cross_run_hybrid_entries(tool_map, struct_tolerance, min_corroboration)) if cross_run_mode \
-                     else (lambda tb: collect_entries_consensus_hybrid(tb, struct_tolerance))
-        for mode, collect_fn in [
-            ('consensus',         collect_entries_consensus),
-            ('consensus_xstruct', xstruct_fn),
-            ('consensus_hybrid',  hybrid_fn),
-            ('priority',          collect_entries_priority),
-        ]:
+        # cross_run_mode has its own separate weak-evidence corroboration
+        # logic and hasn't been extended to cover multi-iso recovery.
+        hybrid_fn = (lambda tb: cross_run_hybrid_entries(tool_map, struct_tolerance, min_corroboration)) if cross_run_mode \
+                    else (lambda tb: collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance))
+        modes = [('consensus_hybrid', hybrid_fn)]
+        if run_legacy_modes:
+            xstruct_fn = lambda tb: collect_entries_consensus_xstruct(tb, struct_tolerance)
+            modes = [
+                ('consensus',         collect_entries_consensus),
+                ('consensus_xstruct', xstruct_fn),
+                ('consensus_hybrid',  hybrid_fn),
+                ('priority',          collect_entries_priority),
+            ]
+        for mode, collect_fn in modes:
             entries = collect_fn(tool_best)
 
             for entry in entries:
@@ -909,13 +990,10 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
                 bsj_id = make_bsj_id(chrom, start, end, strand,
                                       suffix=(label if label != 'main' else None))
 
-                # score: for cross-run hybrid entries, srec is the actual
-                # record that won this structure's group, so use its own
-                # score directly. tool_best[t] could be a different record
-                # from the same entry, with a different (higher) score,
-                # which would wrongly give this structure another one's
-                # read support.
-                if cross_run_mode and mode == 'consensus_hybrid':
+                # consensus_hybrid: use srec's own score, not tool_best[t]'s,
+                # which could be a different record with a higher score and
+                # misattribute read support to this structure.
+                if mode == 'consensus_hybrid':
                     try:
                         score = int(srec.get('score', group_score))
                     except (TypeError, ValueError):
@@ -962,6 +1040,10 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
 
     n_groups = len(groups)
     for mode in ('consensus', 'consensus_xstruct', 'consensus_hybrid', 'priority'):
+        if mode not in computed_modes:
+            print(f'[smart_merge] {sample}: smart_{mode}: skipped (needs --benchmark_modes)',
+                  file=sys.stderr)
+            continue
         n_all = len(mode_lines[mode]['bed'])
         print(
             f'[smart_merge] {sample}: {n_groups} groups → smart_{mode}: {n_all} isoform entries',
@@ -996,9 +1078,9 @@ def main():
             all_records.extend(recs)
             active_tools.append(tool)
 
-    if len(active_tools) < 2:
+    if len(active_tools) < 1:
         print(
-            f'[smart_merge] Only {len(active_tools)} active tool(s), need at least 2. Writing empty outputs.',
+            f'[smart_merge] {len(active_tools)} active tool(s). Writing empty outputs.',
             file=sys.stderr
         )
         os.makedirs(args.outdir, exist_ok=True)
@@ -1007,6 +1089,8 @@ def main():
             '_smart_consensus_confidence.tsv',
             '_smart_consensus_xstruct.bed12',
             '_smart_consensus_xstruct_confidence.tsv',
+            '_smart_consensus_hybrid.bed12',
+            '_smart_consensus_hybrid_confidence.tsv',
             '_smart_priority.bed12',
             '_smart_priority_confidence.tsv',
         ]:
@@ -1020,7 +1104,8 @@ def main():
     struct_tol = args.struct_tolerance if args.struct_tolerance is not None else args.tolerance
     groups = group_relaxed(all_records, args.tolerance)
     write_outputs(groups, ordered, args.sample, args.outdir, struct_tol,
-                  cross_run_mode=cross_run_mode, min_corroboration=args.min_corroboration)
+                  cross_run_mode=cross_run_mode, min_corroboration=args.min_corroboration,
+                  benchmark_modes=args.benchmark_modes)
 
 
 if __name__ == '__main__':

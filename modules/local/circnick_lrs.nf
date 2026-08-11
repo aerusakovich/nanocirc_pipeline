@@ -6,7 +6,7 @@ process CIRCNICK_LRS {
 
     container "${ (workflow.containerEngine == 'singularity' || workflow.containerEngine == 'apptainer') && !task.ext.singularity_pull_docker_container ?
         'https://zenodo.org/records/20707975/files/nanocirc-circnick-lrs-v1.0.sif?download=1' :
-        'quay.io/anrusakovich/circnick-lrs:latest' }"
+        'quay.io/anrusakovich/circnick-lrs@sha256:4af97347439696a7a0f0487ac10a9cc3363046327bb68a143b24d5a7663202a8' }"
 
     input:
     tuple val(meta), path(fastq)

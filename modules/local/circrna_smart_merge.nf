@@ -28,7 +28,15 @@ process CIRCRNA_SMART_MERGE {
     script:
     def names_arg = tool_names.join(' ')
     def files_arg = bed_files.collect { f -> f.toString() }.join(' ')
+    // pair_files is empty for a single-tool run (n_active=1, no pairs possible);
+    // omit --pairs entirely rather than pass it an empty value.
     def pairs_arg = pair_files.collect { f -> f.toString() }.join(' ')
+    def pairs_flag = pairs_arg ? "--pairs ${pairs_arg}" : ''
+    // params.run_benchmark_modes can arrive as a String from the CLI ('false'
+    // is truthy in Groovy), so convert explicitly rather than use it directly.
+    def benchmarkModes = params.run_benchmark_modes instanceof String
+        ? params.run_benchmark_modes.toBoolean() : (params.run_benchmark_modes as boolean)
+    def benchmarkFlag  = benchmarkModes ? '--benchmark_modes' : ''
     """
     python3 ${projectDir}/bin/smart_merge.py \\
         --sample           ${meta.id} \\
@@ -37,6 +45,7 @@ process CIRCRNA_SMART_MERGE {
         --tolerance        ${params.circrna_bsj_tolerance} \\
         --struct_tolerance ${params.circrna_bsj_tolerance} \\
         --n_active         ${n_active} \\
+        ${benchmarkFlag} \\
         --outdir           .
 
     # Add Low/Medium/High confidence scoring to all four mode TSVs
@@ -44,7 +53,7 @@ process CIRCRNA_SMART_MERGE {
         tsv="${meta.id}_smart_\${mode}_confidence.tsv"
         python3 ${projectDir}/bin/add_isoform_confidence.py \\
             --confidence  "\${tsv}" \\
-            --pairs       ${pairs_arg} \\
+            ${pairs_flag} \\
             --min_overlap ${params.circrna_isoform_overlap} \\
             --n_active    ${n_active} \\
             --strip_isoform_suffix \\

@@ -25,6 +25,7 @@ process CIRCRNA_CONFIDENCE_FILTER {
         --bed    ${bed12} \\
         --tsv    ${tsv} \\
         --mode   ${mode} \\
+        --trusted_tools ${params.circrna_trusted_tools} \\
         --prefix ${prefix}
 
     cat <<-END_VERSIONS > versions.yml

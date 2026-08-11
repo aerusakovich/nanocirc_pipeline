@@ -22,26 +22,19 @@ process CIRCRNA_CROSSRUN_MERGE {
     def n            = meta.sample_ids.size()
     def raw_prefix   = "${meta.id}_${meta.tier}_crossrun"
     prefix           = raw_prefix  // used in output block
-    def min_count    = meta.tier == 'discovery'                                    ? 1
+    // A 1-sample group has nothing to corroborate against; requiring 2-sample
+    // support (the normal balanced/high_confidence formulas below) would drop
+    // every locus. Floor both min_count and min_corroboration at 1 for n<2,
+    // so a lone sample's own tier output passes through unchanged.
+    def min_count    = n < 2 ? 1
+                     : meta.tier == 'discovery'                                    ? 1
                      : (meta.tier == 'balanced_precision' || meta.tier == 'balanced_recall') ? Math.max(2, Math.ceil(0.25 * n).toInteger())
                      : /* high_confidence */                                        Math.ceil(0.75 * n).toInteger()
+    def min_corroboration = n < 2 ? 1 : params.crossrun_min_tool_agreement
     """
-    # smart_merge: makes all 4 mode files, only the hybrid ones are used below.
-    # The consensus, xstruct and priority files stay in the work dir, unused.
-    #
-    # --conf_tsvs turns on cross-run merge mode. Here each sample is
-    # already a merged catalog, not one raw call per tool, so its bed12 can
-    # have several records (main plus isoN) at the same locus. Without
-    # --conf_tsvs, smart_merge.py reduces each sample to one record by raw
-    # score before voting. That can drop a sample's own correct 'main' pick
-    # if another record from the same sample has a higher score.
-    # --conf_tsvs instead groups every record by its real structure and
-    # ranks groups by summed struct_agree_count (total tool agreement).
-    # See cross_run_hybrid_entries() in smart_merge.py.
-    #
-    # --min_corroboration drops a structure seen in only 1 run, unless that
-    # run's own tool agreement meets this number. Tests showed this cuts
-    # cross-run false positives by about 34%, for a small recall cost.
+    # Only consensus_hybrid is computed here (see write_outputs()).
+    # --conf_tsvs: cross-run mode, see cross_run_hybrid_entries().
+    # --min_corroboration: min tool-agreement to keep a single-run structure.
     smart_merge.py \\
         --sample        ${raw_prefix} \\
         --tool_names    ${sample_names} \\
@@ -50,7 +43,7 @@ process CIRCRNA_CROSSRUN_MERGE {
         --tolerance     ${params.circrna_bsj_tolerance} \\
         --struct_tolerance ${params.circrna_bsj_tolerance} \\
         --n_active      ${n} \\
-        --min_corroboration ${params.crossrun_min_tool_agreement} \\
+        --min_corroboration ${min_corroboration} \\
         --outdir        .
 
     # ── Pairwise bedtools intersect ────────────────────────────────────────────
@@ -67,9 +60,15 @@ process CIRCRNA_CROSSRUN_MERGE {
     done
 
     # ── Add isoform confidence ─────────────────────────────────────────────────
+    # PAIRS is empty for a 1-sample group (nothing to pair); omit --pairs then
+    # rather than pass it an empty value.
+    PAIRS_FLAG=()
+    if [ "\${#PAIRS[@]}" -gt 0 ]; then
+        PAIRS_FLAG=(--pairs "\${PAIRS[@]}")
+    fi
     add_isoform_confidence.py \\
         --confidence  ${raw_prefix}_smart_consensus_hybrid_confidence.tsv \\
-        --pairs       "\${PAIRS[@]}" \\
+        "\${PAIRS_FLAG[@]}" \\
         --min_overlap ${params.circrna_isoform_overlap} \\
         --n_active    ${n} \\
         --strip_isoform_suffix \\
