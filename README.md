@@ -149,8 +149,6 @@ The four output modes filter on these axes:
 | `balanced_recall` | ≥ Medium on both, or Low from a trusted tool (CIRI-long/IsoCirc/CircFL-seq by default, `--circrna_trusted_tools`) |
 | `high_confidence` | High on **both** axes, or Low from IsoCirc if it meets read support threshold|
 
-> **Note:** Scores reflect agreement among the tools that actually ran. A `High` from 2 tools (both agree) is not equivalent to `High` from 4 tools.
-
 Not sure which tier fits your analysis? See [benchmark results](docs/benchmark.md) for what each one trades off, our recommendations, and the benchmark plots behind them.
 
 ## Cross-run merge and quantification
@@ -159,7 +157,7 @@ Set `--run_crossrun_merge true` (with a `group` column in the samplesheet) to me
 
 Set `--run_quantify true` to add per-locus read counts, either per sample or per group depending on `--run_crossrun_merge`. The `discovery`/`balanced_recall` tiers then go through a confidence filter that drops low-read loci called only by CircNick-LRS; `high_confidence` goes through the same filter but drops low-read IsoCirc-only calls instead. Both use `--circrna_confident_min_reads` as the read-count cutoff. `balanced_precision` is untouched.
 
-When `--run_quantify true` is set, the pipeline also builds a DESeq2-ready count matrix per confidence tier, one wide table with every sample in the run as a column. Each row is one isoform (same BSJ but a different exon structure gets its own row), so multi-isoform loci aren't collapsed. Found in `<outdir>/circrna/deseq2/`:
+When `--run_quantify true` is set, the pipeline also builds a DESeq2-ready count matrix per confidence tier. Each row is one isoform (same BSJ but a different exon structure gets its own row), so multi-isoform loci are preserved. Found in `<outdir>/circrna/deseq2/`:
 
 ```
 deseq2/

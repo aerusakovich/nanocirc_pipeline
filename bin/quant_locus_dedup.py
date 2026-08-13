@@ -3,11 +3,9 @@
 quant_locus_dedup.py
 
 Clusters near-duplicate loci in a discovery-set catalog before building
-remap references.
-
-Requires both start and end to be within `--tolerance` bp, not either
-alone. An OR-based merge was found to wrongly chain together biologically
-distinct isoforms that only share one splice boundary.
+remap references: relaxed-BSJ union-find (start AND end within
+--tolerance), then group_by_abs_struct (from
+smart_merge.py, same as hybrid mode's isoform recognition).
 
 Runs once per catalog, not per sample. The discovery catalog is shared
 across every sample being quantified.
@@ -21,6 +19,8 @@ Usage:
 import argparse
 
 import pandas as pd
+
+from smart_merge import group_by_abs_struct
 
 
 class UnionFind:
@@ -44,7 +44,7 @@ def parse_args():
     p.add_argument('--catalog', required=True,
                     help='Locus catalog TSV (bsj_id/chrom/start/end/strand + rank columns)')
     p.add_argument('--tolerance', type=int, default=10,
-                    help='bp tolerance for both start AND end to be considered the same locus')
+                    help='bp tolerance for start/end and per-exon structure matching')
     p.add_argument('--rank-cols', nargs='+', default=['bsj_confidence', 'n_samples_max'],
                     help='Columns (descending) used to pick each cluster representative; '
                          'columns not present in --catalog are ignored')
@@ -53,12 +53,17 @@ def parse_args():
 
 
 def _pick_representative(g: pd.DataFrame, rank_cols) -> pd.Series:
-    """Highest-ranked row wins ties in order: rank_cols (each descending),
-    then shortest span (most precisely-called boundary)."""
     ascending = [False] * len(rank_cols) + [True]
     rep = g.sort_values(list(rank_cols) + ["span"], ascending=ascending).iloc[0].copy()
     rep["cluster_root"] = g.name
     return rep
+
+
+def _as_records(metadata):
+    return {
+        i: {'start': row['start'], 'block_sizes': row['blockSizes'], 'block_starts': row['blockStarts']}
+        for i, row in metadata.iterrows()
+    }
 
 
 def cluster_duplicate_loci(loci_catalog: pd.DataFrame, tolerance: int, rank_cols):
@@ -76,7 +81,22 @@ def cluster_duplicate_loci(loci_catalog: pd.DataFrame, tolerance: int, rank_cols
                 if abs(metadata.at[idxs[j], "end"] - metadata.at[idxs[i], "end"]) <= tolerance:
                     uf.union(idxs[i], idxs[j])
 
-    metadata["cluster_root"] = [uf.find(i) for i in range(n)]
+    bsj_root = [uf.find(i) for i in range(n)]
+    records = _as_records(metadata)
+
+    by_bsj_root = {}
+    for i, root in enumerate(bsj_root):
+        by_bsj_root.setdefault(root, []).append(i)
+
+    cluster_root = [None] * n
+    next_id = 0
+    for idxs in by_bsj_root.values():
+        for _, members in group_by_abs_struct({i: records[i] for i in idxs}, tolerance):
+            for i in members:
+                cluster_root[i] = next_id
+            next_id += 1
+
+    metadata["cluster_root"] = cluster_root
     metadata["span"] = metadata["end"] - metadata["start"]
 
     reps = metadata.groupby("cluster_root", group_keys=False).apply(

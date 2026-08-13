@@ -9,6 +9,20 @@ genome-alignment candidate-pool prefilter entirely, since that prefilter
 is exactly what starves these hard-to-place loci (they are flagged in
 the first place because tier1 undercounted them).
 
+The reference pool also always includes every OTHER isoform sharing a
+flagged locus's BSJ (same bsj_id before the "|isoN" suffix), even if that
+sibling itself was never flagged. Without this, a flagged isoform's
+circle reference is the only option classify_exclusive can assign a read
+to, so a read that actually belongs to its unflagged sibling (identical
+BSJ, near-identical structure) has no competing reference to lose to and
+gets miscredited to the flagged isoform instead, inflating its count well
+past its real read support. This mirrors quant_tier3_rescue.py's own
+gene-family sibling handling, applied to same-BSJ structural siblings
+instead of cross-locus paralogs. Found via a real case: a CIRI-long locus
+with an ambiguous "|"-joined isoform call split into two catalog entries,
+where the minor isoform's tier2 count came out at 10x its true value
+because its major sibling was never in the alignment competition.
+
 Usage:
     quant_tier2_rescue.py \\
         --flagged_similarity sample1_flagged_loci_similarity.tsv \\
@@ -56,18 +70,33 @@ def _fastq_to_fasta(reads_fq, out_fa):
             out.write(f">{rid}\n{seq}")
 
 
+def _expand_to_siblings(flagged_ids: list, deduped_metadata: pd.DataFrame) -> list:
+    """flagged_ids plus every other deduped_metadata bsj_id sharing the same
+    base bsj_id (same BSJ coordinates, before any "|isoN" suffix)."""
+    if not flagged_ids:
+        return []
+    base = deduped_metadata["bsj_id"].str.split("|").str[0]
+    flagged_bases = set(pd.Series(flagged_ids, dtype=str).str.split("|").str[0])
+    return deduped_metadata.loc[base.isin(flagged_bases), "bsj_id"].tolist()
+
+
 def tier2_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFrame, genome_fasta,
                   reads_fq: Path, sample: str, minimap2_bin, samtools_bin, pblat_bin, threads=16) -> pd.DataFrame:
-    candidate_ids = flagged_similarity.loc[flagged_similarity["tier2_candidate"], "bsj_id"].tolist()
+    flagged_ids = flagged_similarity.loc[flagged_similarity["tier2_candidate"], "bsj_id"].tolist()
     workdir = Path(f'{sample}_tier2_work')
     workdir.mkdir(parents=True, exist_ok=True)
 
-    if not candidate_ids:
+    if not flagged_ids:
         out = pd.DataFrame(columns=["bsj_id", "tier2_count"])
         out.to_csv(f'{sample}_tier2_counts.tsv', sep="\t", index=False)
         print(f"[{sample}] tier2: no candidates")
         return out
 
+    candidate_ids = _expand_to_siblings(flagged_ids, deduped_metadata)
+    n_siblings = len(candidate_ids) - len(flagged_ids)
+    if n_siblings:
+        print(f"[{sample}] tier2: {len(flagged_ids)} flagged, "
+              f"+{n_siblings} unflagged siblings added as competing references")
     candidates = deduped_metadata[deduped_metadata["bsj_id"].isin(candidate_ids)]
     ref_lengths = build_circle_references(genome_fasta, candidates, workdir)
     ref_fa = workdir / "circle_refs.fa"

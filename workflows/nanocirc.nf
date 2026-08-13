@@ -13,6 +13,8 @@ include { QUANT_APPEND_COUNTS     } from '../modules/local/quant_append_counts'
 include { CIRCRNA_CROSSRUN_MERGE  } from '../modules/local/circrna_crossrun_merge'
 include { FILTER_CONFIDENT_DISCOVERY } from '../modules/local/filter_confident_discovery'
 include { BUILD_DESEQ2_MATRIX     } from '../modules/local/build_deseq2_matrix'
+include { APPEND_RUN_COUNTS_MATRIX } from '../modules/local/append_run_counts_matrix'
+include { APPEND_RUN_COUNTS_MATRIX as APPEND_RUN_COUNTS_MATRIX_CROSSRUN } from '../modules/local/append_run_counts_matrix'
 include { paramsSummaryMap       } from 'plugin/nf-schema'
 include { paramsSummaryMultiqc   } from '../subworkflows/nf-core/utils_nfcore_pipeline'
 include { softwareVersionsToYAML } from '../subworkflows/nf-core/utils_nfcore_pipeline'
@@ -272,6 +274,30 @@ workflow NANOCIRC {
 
         BUILD_DESEQ2_MATRIX ( ch_deseq2_input )
         ch_versions = ch_versions.mix(BUILD_DESEQ2_MATRIX.out.versions)
+
+        // Fill out each run's own clean_with_counts.tsv with every run's
+        // count for the same isoform, reusing the matrix BUILD_DESEQ2_MATRIX
+        // just built (same isoform_id join key, no new counting). Republishes
+        // under the same filename FILTER_CONFIDENT_DISCOVERY already used, so
+        // this becomes the final, fuller clean_with_counts.tsv, not an extra file.
+        def ch_run_counts_input = ch_final_clean_with_counts
+            .map { meta, tsv -> [meta.category, meta, tsv] }
+            .combine( BUILD_DESEQ2_MATRIX.out.counts, by: 0 )
+            .map { _tier, meta, tsv, matrix -> [meta, tsv, matrix] }
+
+        APPEND_RUN_COUNTS_MATRIX ( ch_run_counts_input )
+        ch_versions = ch_versions.mix(APPEND_RUN_COUNTS_MATRIX.out.versions.first())
+
+        // Same fill-out, for CIRCRNA_CROSSRUN_MERGE's own group-level clean.tsv.
+        if (runCrossrunMerge) {
+            def ch_crossrun_counts_input = CIRCRNA_CROSSRUN_MERGE.out.clean
+                .map { meta, tsv -> [meta.tier, meta, tsv] }
+                .combine( BUILD_DESEQ2_MATRIX.out.counts, by: 0 )
+                .map { _tier, meta, tsv, matrix -> [meta, tsv, matrix] }
+
+            APPEND_RUN_COUNTS_MATRIX_CROSSRUN ( ch_crossrun_counts_input )
+            ch_versions = ch_versions.mix(APPEND_RUN_COUNTS_MATRIX_CROSSRUN.out.versions.first())
+        }
     }
 
     //
