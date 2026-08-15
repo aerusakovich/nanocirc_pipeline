@@ -7,7 +7,7 @@ process CIRILONG_TO_BED12 {
         'quay.io/biocontainers/python:3.9--1' }"
 
     input:
-    tuple val(meta), path(info)      // CIRI-long.info file
+    tuple val(meta), path(info), path(isoforms)      // CIRI-long .info and .isoforms files
 
     output:
     tuple val(meta), path("${meta.id}_cirilong.bed12"), emit: bed12
@@ -20,6 +20,7 @@ process CIRILONG_TO_BED12 {
     """
     python3 ${projectDir}/bin/cirilong_to_bed12.py \\
         ${info} \\
+        ${isoforms} \\
         ${meta.id}_cirilong.bed12
 
     cat <<-END_VERSIONS > versions.yml

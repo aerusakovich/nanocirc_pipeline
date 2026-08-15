@@ -40,7 +40,7 @@ def finalize_counts(deduped_metadata: pd.DataFrame, tier1: pd.DataFrame,
                      flagged_similarity: pd.DataFrame, tier2: pd.DataFrame, tier3: pd.DataFrame) -> pd.DataFrame:
     cols = [c for c in ["bsj_id", "chrom", "start", "end", "strand", "gene_id"] if c in deduped_metadata.columns]
     final = deduped_metadata[cols].merge(tier1, on="bsj_id", how="left")
-    final["remap_count"] = final["remap_count"].fillna(0)
+    final["remap_count"] = final["remap_count"].fillna(0).astype(float)
     final["quant_tier"] = "tier1"
     final["low_confidence"] = False
 

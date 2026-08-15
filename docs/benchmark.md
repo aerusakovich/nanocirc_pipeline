@@ -219,6 +219,13 @@ Dataset details: NanoSim characterized from real CIRI-long-protocol ONT control 
 
 Precision/recall for every tool and every nanocirc tier, at three structural matching strictness levels (exon-based, relaxed BSJ, strict BSJ). The four tiers trace out the trade-off described above: `discovery` sits at high recall/lower precision, `high_confidence` at the opposite corner, and the two balanced tiers in between.
 
+### Isoform detection performance
+
+The structural plot above shows if a specific part of circRNA structure was found at its locus. It can help us understand what parts of circRNA structure tools struggle with. But we are interested to see if the callers have found the exactly same molecule, especially on isoform level which is the main point of using long read sequencing approach. We evaluated that with three tiers, each pairing a BSJ boundary check with an exon overlap check: `full` (exact BSJ, 100% overlap, byte identical structure), `strict` (BSJ within tolerance window, 99% exon overlap, allows little boundary noise but can be easily reconstructed by follow up analyses), `relaxed` (BSJ within tolerance, 90% overlap, allowing a part of mismatched sequence).
+
+<img src="images/benchmark/pr_scatter_isoform_human.png" width="100%"/>
+<img src="images/benchmark/pr_scatter_isoform_mouse.png" width="100%"/>
+
 ### Ground truth coverage
 
 <img src="images/benchmark/gt_coverage_stacked_human.png" width="100%"/>
@@ -316,6 +323,17 @@ Read-count correlation against ground truth (right panel) and cross-method agree
 
 For differential expression, Spearman rho matters to rank circRNAs correctly relative to each other; Pearson r/R² matter to ensure the fold-changes DESeq2 estimates between conditions are quantitatively trustworthy, not just directionally right.
 
+#### Isoform-level expression quantification
+
+The correlation above evaluates BSJ level expression, so it only shows if a locus's read count is right, not per-isoform count. The three plots below show the same correlation, but matched at the `full`/`strict`/`relaxed` isoform tiers described in [Isoform detection performance](#isoform-detection-performance). This shows how well tools estimate isoform level expression, not just locus level.
+
+<img src="images/benchmark/expression_correlation_human_full.png" width="100%"/>
+<img src="images/benchmark/expression_correlation_mouse_full.png" width="100%"/>
+<img src="images/benchmark/expression_correlation_human_strict.png" width="100%"/>
+<img src="images/benchmark/expression_correlation_mouse_strict.png" width="100%"/>
+<img src="images/benchmark/expression_correlation_human_relaxed.png" width="100%"/>
+<img src="images/benchmark/expression_correlation_mouse_relaxed.png" width="100%"/>
+
 <img src="images/benchmark/sensitivity_by_expression_human.png" width="100%"/>
 <img src="images/benchmark/sensitivity_by_expression_mouse.png" width="100%"/>
 
@@ -325,6 +343,15 @@ Detection sensitivity broken down by ground-truth expression tertile: low-expres
 <img src="images/benchmark/reproducibility_pairs_mouse.png" width="100%"/>
 
 Pairwise read-count agreement across every tool/tier combination, ground truth included.
+
+Same reproducibility matrix, matched at the `full`/`strict`/`relaxed` isoform tiers instead of structural comparison, so agreement is evaluated on isoform level.
+
+<img src="images/benchmark/reproducibility_pairs_human_full.png" width="100%"/>
+<img src="images/benchmark/reproducibility_pairs_mouse_full.png" width="100%"/>
+<img src="images/benchmark/reproducibility_pairs_human_strict.png" width="100%"/>
+<img src="images/benchmark/reproducibility_pairs_mouse_strict.png" width="100%"/>
+<img src="images/benchmark/reproducibility_pairs_human_relaxed.png" width="100%"/>
+<img src="images/benchmark/reproducibility_pairs_mouse_relaxed.png" width="100%"/>
 
 ---
 

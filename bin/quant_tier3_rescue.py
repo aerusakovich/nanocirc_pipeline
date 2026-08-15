@@ -7,10 +7,15 @@ similarity.py's is_gene_family==True) instead of excluding them. It
 builds one combined reference from every flagged gene-family locus plus
 all its transitively-linked genuine_family_siblings (union-find over the
 sibling graph, since sibling lists can overlap), aligns the full raw
-fastq against that combined reference, and uses classify_exclusive
-(best-hit-wins) to split reads among the competing family members. This
+fastq against that combined reference, and uses classify_boundary_aware
+(quant_common.py) to split reads among the competing family members: a
+read is handed whole to one paralog only if it crosses that paralog's
+diagnostic (paralog-unique) sequence, otherwise it contributes a
+fractional 1/N split across every family member it qualifies for. This
 resolves boundary-variant loci that otherwise show only 15-58% pairwise
-read overlap despite being the same junction.
+read overlap despite being the same junction, without letting reads that
+never leave the shared sequence decide the split by total-span noise
+alone.
 
 Usage:
     quant_tier3_rescue.py \\
@@ -27,7 +32,8 @@ from collections import defaultdict
 
 import pandas as pd
 
-from quant_common import MIN_SEGMENT_MATCH, run_minimap2_bam, run_pblat, parse_bam_hits, parse_psl_hits, classify_exclusive
+from quant_common import (MIN_SEGMENT_MATCH, read_fasta, run_minimap2_bam, run_pblat,
+                           parse_bam_hits, parse_psl_hits, build_diagnostic_regions, classify_boundary_aware)
 from quant_build_refs import build_circle_references
 
 
@@ -79,6 +85,23 @@ def _fastq_to_fasta(reads_fq, out_fa):
             out.write(f">{rid}\n{seq}")
 
 
+def _diagnostic_regions_by_cluster(ref_lengths: pd.DataFrame, ref_seqs: dict, clusters: dict) -> dict:
+    """build_diagnostic_regions, applied separately within each gene-family
+    union-find cluster, so a paralog's diagnostic sequence is only defined
+    relative to the other members of its own cluster, not to unrelated
+    families sharing this rescue call."""
+    safe_id_by_bsj = dict(zip(ref_lengths["bsj_id"], ref_lengths["safe_id"]))
+    diagnostic = {}
+    for members in clusters.values():
+        safe_ids = [safe_id_by_bsj[m] for m in members if m in safe_id_by_bsj]
+        seqs = {sid: ref_seqs[sid] for sid in safe_ids if sid in ref_seqs}
+        if len(seqs) < 2:
+            diagnostic.update({sid: [] for sid in seqs})
+            continue
+        diagnostic.update(build_diagnostic_regions(seqs))
+    return diagnostic
+
+
 def tier3_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFrame, genome_fasta,
                   reads_fq: Path, sample: str, minimap2_bin, samtools_bin, pblat_bin, threads=16) -> pd.DataFrame:
     gf = flagged_similarity[flagged_similarity["is_gene_family"]]
@@ -128,9 +151,12 @@ def tier3_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFram
 
     join_pos_by_ref = dict(zip(ref_lengths["safe_id"], ref_lengths["join_pos"]))
     safe_to_bsj = dict(zip(ref_lengths["safe_id"], ref_lengths["bsj_id"]))
-    support = classify_exclusive(parse_bam_hits(bam_path), parse_psl_hits(psl_path), join_pos_by_ref)
+    ref_seqs = read_fasta(ref_fa)
+    diagnostic_regions = _diagnostic_regions_by_cluster(ref_lengths, ref_seqs, clusters)
+    support = classify_boundary_aware(parse_bam_hits(bam_path), parse_psl_hits(psl_path),
+                                       join_pos_by_ref, diagnostic_regions)
 
-    rows = [{"bsj_id": safe_to_bsj[ref], "tier3_count": len(support.get(ref, set()))}
+    rows = [{"bsj_id": safe_to_bsj[ref], "tier3_count": support.get(ref, 0.0)}
             for ref in join_pos_by_ref]
     out = pd.DataFrame(rows).sort_values("tier3_count", ascending=False)
     out_path = f'{sample}_tier3_counts.tsv'

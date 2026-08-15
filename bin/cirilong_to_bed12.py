@@ -12,18 +12,38 @@ Some records contain multiple isoforms separated by '|' in the isoform
 field. Each isoform is written as a separate BED12 record with a
 '_iso1', '_iso2', ... suffix appended to the name.
 
+isoform scores come from the CIRI-long.isoforms file, which contains the fraction of reads supporting each isoform.
+
 Usage:
-    python3 cirilong_to_bed12.py CIRI-long.info output.bed12
+    python3 cirilong_to_bed12.py CIRI-long.info CIRI-long.isoforms output.bed12
+    python3 cirilong_to_bed12.py CIRI-long.info NO_FILE output.bed12   # falls back to shared score
 """
 
 import sys
 
 
 def parse_args():
-    if len(sys.argv) != 3:
-        print("Usage: cirilong_to_bed12.py <CIRI-long.info> <output.bed12>")
+    if len(sys.argv) != 4:
+        print("Usage: cirilong_to_bed12.py <CIRI-long.info> <CIRI-long.isoforms|NO_FILE> <output.bed12>")
         sys.exit(1)
-    return sys.argv[1], sys.argv[2]
+    return sys.argv[1], sys.argv[2], sys.argv[3]
+
+
+def load_isoform_fractions(isoforms_file):
+    import os
+    fractions = {}
+    if not isoforms_file or isoforms_file == "NO_FILE" or not os.path.exists(isoforms_file):
+        return fractions
+    with open(isoforms_file) as fh:
+        next(fh, None)  # header
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            key_field, frac = line.split("\t")
+            circ_id, structure = key_field.split("|", 1)
+            fractions[(circ_id, structure)] = float(frac)
+    return fractions
 
 
 def parse_attributes(attr_string):
@@ -93,16 +113,21 @@ def isoform_to_blocks(isoform_str, chrom_start):
     return block_count, block_sizes, block_starts
 
 
-def convert(info_file, out_file):
+def convert(info_file, isoforms_file, out_file):
     """
     Read CIRI-long.info line by line, write BED12.
 
     Handles multi-isoform records where the isoform field contains
     multiple isoforms separated by '|'. Each isoform is written as
-    a separate BED12 record with '_iso1', '_iso2', ... suffix.
+    a separate BED12 record with '_iso1', '_iso2', ... suffix, its score
+    set to .info's total times that structure's own fraction from
+    isoforms_file (module docstring), rounded to the nearest read.
     """
+    fractions = load_isoform_fractions(isoforms_file)
     written = 0
     skipped = 0
+    split_applied = 0
+    split_missing = 0
 
     with open(info_file) as fh, open(out_file, "w") as out:
         for lineno, line in enumerate(fh, 1):
@@ -150,12 +175,23 @@ def convert(info_file, out_file):
 
                 block_count, block_sizes, block_starts = result
 
+                iso_score = score
+                if len(isoforms) > 1:
+                    frac = fractions.get((base_name, isoform))
+                    if frac is None:
+                        print(f"WARNING line {lineno} iso{iso_idx + 1}: no matching fraction in "
+                              f"{isoforms_file}, falling back to the shared total score")
+                        split_missing += 1
+                    else:
+                        iso_score = str(round(int(score) * frac))
+                        split_applied += 1
+
                 bed12_line = "\t".join([
                     chrom,
                     str(chrom_start),
                     str(chrom_end),
                     name,
-                    score,
+                    iso_score,
                     strand,
                     str(chrom_start),   # thickStart = thickEnd = start → no CDS
                     str(chrom_start),   # thickEnd
@@ -168,9 +204,10 @@ def convert(info_file, out_file):
                 out.write(bed12_line + "\n")
                 written += 1
 
-    print(f"Done: {written} records written, {skipped} skipped")
+    print(f"Done: {written} records written, {skipped} skipped "
+          f"(isoform-score split applied: {split_applied}, fraction missing: {split_missing})")
 
 
 if __name__ == "__main__":
-    info_file, out_file = parse_args()
-    convert(info_file, out_file)
+    info_file, isoforms_file, out_file = parse_args()
+    convert(info_file, isoforms_file, out_file)

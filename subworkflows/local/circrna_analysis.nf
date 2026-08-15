@@ -83,7 +83,11 @@ workflow CIRCRNA_ANALYSIS {
             gtf,
             circrna_db
         )
-        CIRILONG_TO_BED12 ( CIRI_LONG.out.info )
+        def ch_cirilong_info_isoforms = CIRI_LONG.out.info
+            .map { m, f -> [m.id, m, f] }
+            .join(CIRI_LONG.out.isoforms.map { m, f -> [m.id, f] })
+            .map { _id, m, info, isoforms -> [m, info, isoforms] }
+        CIRILONG_TO_BED12 ( ch_cirilong_info_isoforms )
         ch_cirilong_bed = CIRILONG_TO_BED12.out.bed12
         ch_versions     = ch_versions.mix(PREPARE_GENOME.out.versions)
         ch_versions     = ch_versions.mix(CIRI_LONG.out.versions.first())

@@ -23,6 +23,28 @@ with an ambiguous "|"-joined isoform call split into two catalog entries,
 where the minor isoform's tier2 count came out at 10x its true value
 because its major sibling was never in the alignment competition.
 
+Adding the sibling as a competing reference fixed most of that (10x ->
+3.75x error), but not all of it: for a nested isoform pair
+(the minor structure is a subset of the major one), most of the minor
+isoform's true reads still map almost entirely inside the region shared
+by both structures, where classify_exclusive's plain total-aligned-span
+score is essentially noise, not evidence, and still had to pick a
+winner. Assignment now goes through classify_boundary_aware
+(quant_common.py) instead: reads are only decided by whether they cross
+into a diagnostic region unique to one sibling (build_diagnostic_regions,
+k-mer difference between the competing sibling sequences); reads that
+never leave the shared region contribute a fraction 1/N across
+their qualifying siblings instead of assigning to the one that
+scored marginally higher on total span. It requires
+scoring BAM hits by their actual CIGAR-matched blocks rather than raw
+(reference_start, reference_end) span (_matched_blocks_from_cigar):
+minimap2 aligns a base-isoform read to its longer sibling with
+a deletion standing in for the extra exon, and a span check reads
+that deleted gap as "crossed", wrongly crediting the read as diagnostic
+evidence for the sibling it never actually matched. Fixing that dropped
+this same locus's minor-isoform count from 90 to 21 (true value 24),
+with the major isoform unchanged at 161 (true value ~162).
+
 Usage:
     quant_tier2_rescue.py \\
         --flagged_similarity sample1_flagged_loci_similarity.tsv \\
@@ -37,7 +59,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from quant_common import MIN_SEGMENT_MATCH, run_minimap2_bam, run_pblat, parse_bam_hits, parse_psl_hits, classify_exclusive
+from quant_common import (MIN_SEGMENT_MATCH, read_fasta, run_minimap2_bam, run_pblat,
+                           parse_bam_hits, parse_psl_hits, build_diagnostic_regions, classify_boundary_aware)
 from quant_build_refs import build_circle_references
 
 
@@ -80,6 +103,22 @@ def _expand_to_siblings(flagged_ids: list, deduped_metadata: pd.DataFrame) -> li
     return deduped_metadata.loc[base.isin(flagged_bases), "bsj_id"].tolist()
 
 
+def _diagnostic_regions_by_sibling_group(ref_lengths: pd.DataFrame, ref_seqs: dict) -> dict:
+    """build_diagnostic_regions, applied separately within each same-base-BSJ
+    sibling group (not across the whole candidate pool), so an isoform's
+    diagnostic sequence is only defined relative to its own competing
+    siblings, not to unrelated loci that happen to share this rescue call."""
+    base = ref_lengths["bsj_id"].str.split("|").str[0]
+    diagnostic = {}
+    for _base_id, grp in ref_lengths.groupby(base):
+        seqs = {row.safe_id: ref_seqs[row.safe_id] for row in grp.itertuples(index=False) if row.safe_id in ref_seqs}
+        if len(seqs) < 2:
+            diagnostic.update({sid: [] for sid in seqs})
+            continue
+        diagnostic.update(build_diagnostic_regions(seqs))
+    return diagnostic
+
+
 def tier2_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFrame, genome_fasta,
                   reads_fq: Path, sample: str, minimap2_bin, samtools_bin, pblat_bin, threads=16) -> pd.DataFrame:
     flagged_ids = flagged_similarity.loc[flagged_similarity["tier2_candidate"], "bsj_id"].tolist()
@@ -111,9 +150,12 @@ def tier2_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFram
 
     join_pos_by_ref = dict(zip(ref_lengths["safe_id"], ref_lengths["join_pos"]))
     safe_to_bsj = dict(zip(ref_lengths["safe_id"], ref_lengths["bsj_id"]))
-    support = classify_exclusive(parse_bam_hits(bam_path), parse_psl_hits(psl_path), join_pos_by_ref)
+    ref_seqs = read_fasta(ref_fa)
+    diagnostic_regions = _diagnostic_regions_by_sibling_group(ref_lengths, ref_seqs)
+    support = classify_boundary_aware(parse_bam_hits(bam_path), parse_psl_hits(psl_path),
+                                       join_pos_by_ref, diagnostic_regions)
 
-    rows = [{"bsj_id": safe_to_bsj[ref], "tier2_count": len(support.get(ref, set()))}
+    rows = [{"bsj_id": safe_to_bsj[ref], "tier2_count": support.get(ref, 0.0)}
             for ref in join_pos_by_ref]
     out = pd.DataFrame(rows).sort_values("tier2_count", ascending=False)
     out_path = f'{sample}_tier2_counts.tsv'

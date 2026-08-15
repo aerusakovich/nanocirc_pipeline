@@ -263,6 +263,133 @@ def score_chunk_psl(hits_iter, join_pos_by_ref):
     return scores
 
 
+DIAGNOSTIC_KMER = 21  # bp; k-mer length used to find sequence unique to one sibling reference
+
+
+def _kmer_set(seq: str, k: int) -> set:
+    return {seq[i:i + k] for i in range(0, len(seq) - k + 1)}
+
+
+def build_diagnostic_regions(ref_seqs: dict, k: int = DIAGNOSTIC_KMER) -> dict:
+    """For a group of candidate reference sequences that are meant to
+    compete for the same reads (same-BSJ sibling isoforms, or gene-family
+    paralogs), find the reference-local positions in each one whose 
+    sequence is absent from every OTHER member of the group.
+
+    Returns {ref_id: sorted list of (start, end) diagnostic intervals} in
+    that ref's own reference-local coordinates (matching the coordinate
+    space of the BAM/PSL hits aligned against it)."""
+    kmers_by_ref = {rid: _kmer_set(seq, k) for rid, seq in ref_seqs.items()}
+    diagnostic = {}
+    for rid, seq in ref_seqs.items():
+        other_kmers = set()
+        for other_id, kset in kmers_by_ref.items():
+            if other_id != rid:
+                other_kmers |= kset
+        intervals = []
+        run_start = None
+        n_windows = len(seq) - k + 1
+        for i in range(max(0, n_windows)):
+            unique = seq[i:i + k] not in other_kmers
+            if unique and run_start is None:
+                run_start = i
+            elif not unique and run_start is not None:
+                intervals.append((run_start, i + k - 1))
+                run_start = None
+        if run_start is not None:
+            intervals.append((run_start, len(seq)))
+        diagnostic[rid] = intervals
+    return diagnostic
+
+
+def _overlap_bp(intervals, s, e):
+    return sum(max(0, min(b, e) - max(a, s)) for a, b in intervals)
+
+
+def _matched_blocks_from_cigar(ref_start, cigartuples):
+    """Reference-coordinate blocks actually covered by matched/mismatched
+    bases (M/=/X), splitting on deletions and introns (D/N) instead of
+    treating them as covered span. A read aligned with e.g. a 300bp deletion has NOT crossed
+    those 300bp, it skipped them, so a plain (reference_start,
+    reference_end) span would wrongly count that gap as aligned coverage."""
+
+    blocks = []
+    pos = ref_start
+    block_start = None
+    for op, length in cigartuples:
+        if op in (0, 7, 8):  # M, '=', X: consumes reference and is aligned
+            if block_start is None:
+                block_start = pos
+            pos += length
+        elif op in (2, 3):  # D, N: gap, not covered
+            if block_start is not None:
+                blocks.append((block_start, pos))
+                block_start = None
+            pos += length
+        # I(1)/S(4)/H(5)/P(6): no reference consumption
+    if block_start is not None:
+        blocks.append((block_start, pos))
+    return blocks
+
+
+def classify_boundary_aware(bam_hits_iter, psl_hits_iter, join_pos_by_ref, diagnostic_regions_by_ref):
+    """Like classify_exclusive (same proximity/anchor qualification gates),
+    but a read is only handed whole to the single best-scoring reference
+    when it has diagnostic-region coverage (build_diagnostic_regions)
+    that actually favors that reference. A read whose aligned span falls
+    entirely within sequence shared by two or more of its qualifying
+    references carries no information to decide between them: rather than
+    winner-take-all by total span, it is split with equal fractional
+    weight across all of them (RSEM/Salmon-style multi-mapper handling).
+
+    This targets a specific failure mode of plain total-span scoring:
+    for a nested pair of isoforms (one a structural subset of the
+    other), most of the shorter isoform's reads map almost
+    entirely inside the shared region, where total span differs between
+    candidates only by noise (alignment softclipping, indel wobble) and
+    not by genuine evidence, so it should not be allowed to decide the
+    read's assignment.
+
+    Returns {rname: float_count} (fractional for ambiguous reads),
+    unlike classify_exclusive's {rname: set(qname)}."""
+    segments = defaultdict(lambda: defaultdict(list))  # rname -> qname -> [(s,e), ...]
+    for qname, rname, ref_start, ref_end, cigartuples, qlen in bam_hits_iter:
+        if rname not in join_pos_by_ref:
+            continue
+        if cigartuples:
+            segments[rname][qname].extend(_matched_blocks_from_cigar(ref_start, cigartuples))
+        else:
+            segments[rname][qname].append((ref_start, ref_end))
+    for qname, rname, t_start, t_end in psl_hits_iter:
+        if rname not in join_pos_by_ref:
+            continue
+        segments[rname][qname].append((t_start, t_end))
+
+    total_by_qname = defaultdict(dict)  # qname -> rname -> total aligned span
+    diag_by_qname = defaultdict(dict)   # qname -> rname -> diagnostic-region span
+    for rname, reads in segments.items():
+        jp = join_pos_by_ref[rname]
+        diag_regions = diagnostic_regions_by_ref.get(rname, [])
+        for qname, segs in reads.items():
+            if not (proximity_gate(segs, jp) and anchor_coverage_ok(segs, jp)):
+                continue
+            total_by_qname[qname][rname] = sum(e - s for s, e in segs)
+            diag_by_qname[qname][rname] = sum(_overlap_bp(diag_regions, s, e) for s, e in segs)
+
+    counts = defaultdict(float)
+    for qname, per_ref_total in total_by_qname.items():
+        per_ref_diag = diag_by_qname[qname]
+        diag_positive = {r: d for r, d in per_ref_diag.items() if d > 0}
+        if diag_positive:
+            best = max(diag_positive, key=lambda r: (diag_positive[r], per_ref_total[r]))
+            counts[best] += 1.0
+        else:
+            weight = 1.0 / len(per_ref_total)
+            for r in per_ref_total:
+                counts[r] += weight
+    return dict(counts)
+
+
 def classify_exclusive(bam_hits_iter, psl_hits_iter, join_pos_by_ref):
     """Best-hit-wins (RSEM/Salmon-style) assignment across BOTH minimap2 and
     BLAT hits combined: each read is assigned to the single QUALIFYING locus
