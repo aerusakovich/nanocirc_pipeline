@@ -20,16 +20,16 @@ Several benchmarks are shown below:
 
 ## Which tools work with my wet-lab protocol and species?
 
-nanocirc runs 4 tools (CIRI-long, circFL-seq, isoCirc, circNICK-lrs) by default. Not every tool works with every wet-lab protocol's read structure, and circNICK-lrs specifically is also species-dependent, not just protocol-dependent (see table). Set `--wet_lab` to your protocol (`ciri_long`, `circfl`, `isocirc`, or `circnick`) to use default settings for this type of data. `--wet_lab circnick` switches to circNICK-lrs alone: this is the one protocol where the other tools would certainly fail, since the other 3 tools expect rolling-circle reads with multiple copies of the circRNA per read, which is not the case for circNICK-lrs wet-lab data. `--wet_lab isocirc` turns CIRI-long off by default (see below). For every other protocol, `--wet_lab` does not turn any tool off by itself: so we suggest you to try with the default settings, but you can turn on/off tools with `--run_isocirc`, `--run_circfl`, `--run_circnick`, `--run_cirilong` set to `false`.
+nanocirc runs 4 tools (CIRI-long, circFL-seq, isoCirc, circNICK-lrs) by default. Not every tool works with every wet-lab protocol's read structure. Set `--wet_lab` to your protocol (`ciri_long`, `circfl`, `isocirc`, or `circnick`) to use default settings for this type of data. `--wet_lab circnick` switches to circNICK-lrs alone: this is the one protocol where the other tools would certainly fail, since the other 3 tools expect rolling-circle reads with multiple copies of the circRNA per read, which is not the case for circNICK-lrs wet-lab data. `--wet_lab isocirc` turns CIRI-long off by default (see below). For every other protocol, `--wet_lab` does not turn any tool off by itself: so we suggest you to try with the default settings, but you can turn on/off tools with `--run_isocirc`, `--run_circfl`, `--run_circnick`, `--run_cirilong` set to `false`.
 
 | Your wet-lab protocol | Tools suggestion |
 | --- | --- |
-| circNICK-lrs | circNICK-lrs only, human/mouse only**** |
-| CIRI-long | All 4 tools, circNICK-lrs only if human/mouse**** |
-| circFL-seq | All 4 tools, circNICK-lrs only if human/mouse**** |
-| isoCirc* | 3 tools, CIRI-long off by default**, circNICK-lrs only if human/mouse**** |
-| PacBio | protocol-dependent, turn CIRI-long off manually if isoCirc based***, circNICK-lrs only if human/mouse**** |
-
+| circNICK-lrs | circNICK-lrs only |
+| CIRI-long | All 4 tools |
+| circFL-seq | All 4 tools |
+| isoCirc* | 3 tools, CIRI-long off by default** |
+| PacBio | protocol-dependent, turn CIRI-long off manually if isoCirc based*** |
+| Species | protocol-dependent, turn off circNICK-lrs for any species other than human/mouse**** |
 
 \* circFL-seq also needs more memory than usual on isoCirc data: a first attempt at 250GB ran out of memory, a second attempt completed at 500GB, after about 5.5 days. Give circFL-seq extra memory if your samples come from isoCirc-protocol reads.
 
@@ -37,7 +37,7 @@ nanocirc runs 4 tools (CIRI-long, circFL-seq, isoCirc, circNICK-lrs) by default.
 
 \*\*\* On real isoCirc-based PacBio human data, CIRI-long did not finish in reasonable time, getting stuck on its collapse step for days. We tried it 3 times (5 days, then 10 days, then over 24 days), it still has not completed. It worked on simulated data and 10 pct of the real isoCirc-based PacBio dataset, so this issue may be dataset size dependent. PacBio has no dedicated `--wet_lab` preset, as it is a sequencing platform, so select the preset based on the wet-lab approach and turn `--run_cirilong` off manually if you hit the same issue.
 
-\*\*\*\* circNICK-lrs is only benchmarked and supported for human and mouse. Turn it off with `--run_circnick false` for any other species, we have not validated it elsewhere and it is not expected to work.
+\*\*\*\* circNICK-lrs is limited by species: it takes a hard-coded `--circnick_species` value of `human` or `mouse` only, and will not run for any other species, by design, whatever your wet-lab protocol is. Turn it off with `--run_circnick false` if you're not working with human or mouse data. If your protocol is circNICK-lrs's own and your species is neither human nor mouse, no tool in nanocirc will work for your data, since circNICK-lrs is the only tool compatible with that protocol.
 
 ## Which tier should I use?
 
