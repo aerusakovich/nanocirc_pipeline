@@ -186,6 +186,32 @@ def test_group_relaxed_requires_same_chrom_and_strand():
     assert len(groups) == 3
 
 
+def test_group_relaxed_merges_unstranded_with_real_strand():
+    records = [
+        rec(tool='a', chrom='chr1', strand='+', start=100, end=200),
+        rec(tool='b', chrom='chr1', strand='.', start=100, end=200),
+    ]
+    groups = sm.group_relaxed(records, tolerance=5)
+    assert len(groups) == 1
+    (key, tool_map), = groups.items()
+    assert key == ('chr1', 100, 200, '+')  # real strand wins over '.'
+    assert set(tool_map) == {'a', 'b'}
+
+
+def test_group_relaxed_still_keeps_conflicting_real_strands_apart():
+    records = [
+        rec(tool='a', chrom='chr1', strand='+', start=100, end=200),
+        rec(tool='b', chrom='chr1', strand='-', start=100, end=200),
+        rec(tool='c', chrom='chr1', strand='.', start=100, end=200),
+    ]
+    groups = sm.group_relaxed(records, tolerance=5)
+    # 'c' can bridge to either real-strand group, but '+' and '-' must
+    # still never end up in the same group as each other.
+    assert len(groups) == 2
+    strands = {key[3] for key in groups}
+    assert strands == {'+', '-'}
+
+
 # ── consensus_hybrid minority-BSJ folding ───────────────────────────────────
 
 def test_collect_entries_consensus_hybrid_folds_minority_bsj_within_tolerance():

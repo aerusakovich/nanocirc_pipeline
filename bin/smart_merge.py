@@ -171,14 +171,29 @@ def load_conf_lookup(path):
 
 def group_relaxed(records, tolerance):
     """
-    Group records by relaxed BSJ: same chrom and strand, start within
-    tolerance, end within tolerance. Uses union-find over a start-sorted
-    list, so a chain of near-duplicate calls (each one close to the next,
-    even if the first and last are far apart) becomes one group instead of
-    splitting into several.
+    Group records by relaxed BSJ: same chrom, start within tolerance, end
+    within tolerance. Two records with different, both-assigned strands
+    ('+' vs '-') are never grouped, that's a genuine strand conflict, not
+    the same call. But a record with no strand assigned ('.', e.g. a
+    short single-exon call a tool couldn't confidently orient) can group
+    with a same-coordinate call on either real strand, the same way the
+    benchmark's own ground-truth matching already treats '.' entries
+    (matches a caller's call on either strand): otherwise the same
+    physical circRNA gets reported twice, once unstranded and once
+    stranded, as if they were two different loci.
+    Uses union-find over a start-sorted list, so a chain of near-duplicate
+    calls (each one close to the next, even if the first and last are far
+    apart) becomes one group instead of splitting into several.
     Returns {(chrom, start, end, strand): {tool: [record, ...]}}
     """
     parent = list(range(len(records)))
+    # Real (non-'.') strands accumulated in each root's group so far. A '.'
+    # record can bridge two groups only if the combined set would still
+    # have at most one real strand in it: otherwise a '.' record sitting
+    # between a '+' call and a '-' call at the same coordinates would
+    # transitively merge them into one, silently erasing a genuine strand
+    # conflict instead of just filling in a missing strand.
+    group_strands = [({rec['strand']} if rec['strand'] != '.' else set()) for rec in records]
 
     def find(x):
         while parent[x] != x:
@@ -188,29 +203,51 @@ def group_relaxed(records, tolerance):
 
     def union(a, b):
         ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[ra] = rb
+        if ra == rb:
+            return
+        combined = group_strands[ra] | group_strands[rb]
+        if len(combined) > 1:
+            return  # would merge a real '+' and a real '-', refuse
+        parent[ra] = rb
+        group_strands[rb] = combined
 
-    by_chrom_strand = defaultdict(list)
+    def strand_compatible(sa, sb):
+        return sa == sb or sa == '.' or sb == '.'
+
+    by_chrom = defaultdict(list)
     for i, rec in enumerate(records):
-        by_chrom_strand[(rec['chrom'], rec['strand'])].append(i)
+        by_chrom[rec['chrom']].append(i)
 
-    for idxs in by_chrom_strand.values():
+    for idxs in by_chrom.values():
         idxs_sorted = sorted(idxs, key=lambda i: records[i]['start'])
         for a in range(len(idxs_sorted)):
             for b in range(a + 1, len(idxs_sorted)):
                 i, j = idxs_sorted[a], idxs_sorted[b]
                 if records[j]['start'] - records[i]['start'] > tolerance:
                     break
+                if not strand_compatible(records[i]['strand'], records[j]['strand']):
+                    continue
                 if abs(records[j]['end'] - records[i]['end']) <= tolerance:
                     union(i, j)
+
+    # Resolve each group's own strand: prefer a real +/- over '.', so
+    # merging in an unstranded call never erases a strand the group already
+    # had resolved. Two conflicting real strands can never share a root,
+    # union() above refuses that merge.
+    resolved_strand = {}
+    for i, rec in enumerate(records):
+        root = find(i)
+        if rec['strand'] != '.':
+            resolved_strand[root] = rec['strand']
+        else:
+            resolved_strand.setdefault(root, '.')
 
     groups = {}
     key_of_root = {}
     for i, rec in enumerate(records):
         root = find(i)
         if root not in key_of_root:
-            key_of_root[root] = (rec['chrom'], rec['start'], rec['end'], rec['strand'])
+            key_of_root[root] = (rec['chrom'], rec['start'], rec['end'], resolved_strand[root])
         key = key_of_root[root]
         groups.setdefault(key, {}).setdefault(rec['tool'], []).append(rec)
     return groups
