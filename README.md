@@ -172,9 +172,9 @@ See [docs/usage.md](docs/usage.md) and [docs/output.md](docs/output.md) for full
 
 ## Credits
 
-nanocirc was written by [Anastasia Rusakovich](https://github.com/aerusakovich).
+nanocirc was written by [Anastasia Rusakovich](https://github.com/aerusakovich) as a part of PhD training under the supervision of Yuna Blum, Thomas Derrien and Marie-Dominique Galibert in GEO/BINGO/Dog Genetics teams of IGDR, Rennes. Doctoral contact was funded with a scholarship, awarded by French Ministry of Higher Education. Pipeline was built and tested across two computational platforms: Genouest and ESKEMM. Special thanks to Victor le Bars, who was the first to test this pipeline, ESKEMM cluster support for their help, BIS2 club in IGDR for discussions and to nf-core community for provided template.
 
-The pipeline builds on the [nf-core](https://nf-co.re) framework and uses containers from [BioContainers](https://biocontainers.pro/) and this pipeline's own patched builds in [containers_circRNA_tools](https://github.com/aerusakovich/containers_circRNA_tools).
+The pipeline is build using the [nf-core](https://nf-co.re) framework and uses containers from [BioContainers](https://biocontainers.pro/) and this pipeline's own patched builds in [containers_circRNA_tools](https://github.com/aerusakovich/containers_circRNA_tools).
 
 ## Citations
 
