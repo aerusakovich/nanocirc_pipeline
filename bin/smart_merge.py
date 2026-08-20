@@ -544,7 +544,11 @@ def collect_entries_consensus_hybrid(tool_best, struct_tolerance):
     2. Structure vote: group only the winning-BSJ tools by exon structure
        similarity (within struct_tolerance bp), then most-votes wins.
     3. Tools with a different BSJ get their own isoform entry at their own
-       BSJ coords (same as smart_consensus, so BSJ diversity is kept).
+       BSJ coords (same as smart_consensus, so BSJ diversity is kept) --
+       unless that BSJ is itself within struct_tolerance bp of a position
+       already placed (the winner, or an earlier minority position), in
+       which case it's boundary noise on the same call, not a real second
+       locus, and its tools are folded into that entry instead.
 
     Difference from consensus: small exon-boundary differences (within
                                 struct_tolerance bp) count as the same
@@ -603,11 +607,29 @@ def collect_entries_consensus_hybrid(tool_best, struct_tolerance):
             'isoform_tools': list(sg_tools),
         })
 
+    # Positions already placed (the winner, then each minority position we
+    # actually keep), so a "disagreeing" BSJ within struct_tolerance of one
+    # of them can be recognized as boundary noise on the same call rather
+    # than a real second locus, and folded into it instead of duplicated.
+    placed_bsj = [(winning_bsj, entries[0])]
+
     for bk, bk_tools in sorted(disagree_bsj.items()):
+        folded = False
+        for (ps, pe), target_entry in placed_bsj:
+            if abs(bk[0] - ps) <= struct_tolerance and abs(bk[1] - pe) <= struct_tolerance:
+                for t in bk_tools:
+                    if t not in target_entry['isoform_tools']:
+                        target_entry['isoform_tools'].append(t)
+                target_entry['bsj_agree'] = len(target_entry['isoform_tools'])
+                folded = True
+                break
+        if folded:
+            continue
+
         iso_n += 1
         bsj_src_minor    = _priority_tool(set(bk_tools), BSJ_PRIORITY)
         struct_src_minor = _priority_tool(set(bk_tools), STRUCT_PRIORITY)
-        entries.append({
+        new_entry = {
             'start':         bk[0],
             'end':           bk[1],
             'struct_rec':    bk_tools[struct_src_minor],
@@ -617,7 +639,9 @@ def collect_entries_consensus_hybrid(tool_best, struct_tolerance):
             'struct_agree':  1,
             'isoform_label': f'iso{iso_n}',
             'isoform_tools': list(bk_tools.keys()),
-        })
+        }
+        entries.append(new_entry)
+        placed_bsj.append((bk, new_entry))
 
     return entries
 

@@ -33,7 +33,7 @@ nanocirc runs 4 tools (CIRI-long, circFL-seq, isoCirc, circNICK-lrs) by default.
 
 \* circFL-seq also needs more memory than usual on isoCirc data: a first attempt at 250GB ran out of memory, a second attempt completed at 500GB, after about 5.5 days. Give circFL-seq extra memory if your samples come from isoCirc-protocol reads.
 
-\*\* On real isoCirc-protocol CIRI-long did not finish in reasonable time, getting stuck on its collapse step for days. We tried it 3 times (5 days, then 10 days, then over 24 days), it still has not completed. It worked on simulated data and 10 pct of the real isoCirc dataset, but much slower than on the datasets from other wet-lab protocols, so this issue may be dataset size dependent. To try CIRI-long on isoCirc data use `--run_cirilong true`. By our benchmark, leaving it off on isoCirc data costs about 0.01 F1 at the `discovery`, `balanced_recall`, and `balanced_precision` tiers, and actually improves `high_confidence` (F1 almost doubles) while improving compute time and reducing the risk of pipeline freeze on this tool. 
+\*\* On real isoCirc-protocol CIRI-long did not finish in reasonable time, getting stuck on its collapse step for days. We tried it 3 times (5 days, then 10 days, then over 24 days), it still has not completed. It worked on simulated data and 10 pct of the real isoCirc dataset, but much slower than on the datasets from other wet-lab protocols, so this issue may be dataset size dependent. To try CIRI-long on isoCirc data use `--run_cirilong true`. By our benchmark, leaving it off on isoCirc data costs at most 0.01 F1 at any of the 4 tiers, while improving compute time and reducing the risk of pipeline freeze on this tool. 
 
 \*\*\* On real isoCirc-based PacBio human data, CIRI-long did not finish in reasonable time, getting stuck on its collapse step for days. We tried it 3 times (5 days, then 10 days, then over 24 days), it still has not completed. It worked on simulated data and 10 pct of the real isoCirc-based PacBio dataset, so this issue may be dataset size dependent. PacBio has no dedicated `--wet_lab` preset, as it is a sequencing platform, so select the preset based on the wet-lab approach and turn `--run_cirilong` off manually if you hit the same issue.
 
@@ -86,10 +86,10 @@ Mean precision (P) / recall (R) / F1 across 3 runs, exon-based matching:
 | circFL-seq alone | P 0.79 / R 0.21 / F1 0.33 | P 0.77 / R 0.25 / F1 0.37 | P 0.74 / R 0.23 / F1 0.36 |
 | CIRI-long alone | P 0.74 / R 0.34 / F1 0.46 | P 0.77 / R 0.41 / F1 0.53 | P 0.77 / R 0.03 / F1 0.05 |
 | circNICK-lrs alone | P 0.24 / R 0.09 / F1 0.13 | P 0.24 / R 0.10 / F1 0.14 | P 0.22 / R 0.10 / F1 0.14 |
-| `discovery` | P 0.68 / R 0.43 / F1 0.53 | P 0.69 / R 0.52 / F1 0.59 | P 0.66 / R 0.26 / F1 0.37 |
-| `balanced_recall` | P 0.74 / R 0.42 / F1 0.53 | P 0.77 / R 0.51 / F1 0.61 | P 0.81 / R 0.25 / F1 0.38 |
-| `balanced_precision` | P 0.85 / R 0.22 / F1 0.35 | P 0.85 / R 0.28 / F1 0.42 | P 0.85 / R 0.09 / F1 0.17 |
-| `high_confidence` | P 0.86 / R 0.07 / F1 0.14 | P 0.88 / R 0.10 / F1 0.17 | P 0.87 / R 0.01 / F1 0.02 |
+| `discovery` | P 0.68 / R 0.43 / F1 0.53 | P 0.69 / R 0.52 / F1 0.59 | P 0.66 / R 0.27 / F1 0.38 |
+| `balanced_recall` | P 0.74 / R 0.42 / F1 0.53 | P 0.77 / R 0.51 / F1 0.61 | P 0.80 / R 0.25 / F1 0.38 |
+| `balanced_precision` | P 0.85 / R 0.22 / F1 0.35 | P 0.85 / R 0.28 / F1 0.42 | P 0.84 / R 0.10 / F1 0.17 |
+| `high_confidence` | P 0.86 / R 0.07 / F1 0.14 | P 0.88 / R 0.10 / F1 0.17 | P 0.86 / R 0.01 / F1 0.02 |
 
 </details>
 
@@ -862,16 +862,16 @@ circFL-seq protocol has the largest recovery of the 3 (48.0% of the GT catalog f
 
 Mean precision (P) / recall (R) / F1 across the same 3 runs, exon-based matching, plus each individual tool's own raw calls:
 
-| Tier / tool | CIRI-long on (old) | CIRI-long off (new default) |
+| Tier / tool | CIRI-long on | CIRI-long off (new default) |
 | --- | --- | --- |
 | isoCirc alone | P 0.87 / R 0.08 / F1 0.15 | P 0.87 / R 0.08 / F1 0.15 |
-| circFL-seq alone | P 0.74 / R 0.23 / F1 0.36 | P 0.74 / R 0.23 / F1 0.36 |
+| circFL-seq alone | P 0.74 / R 0.23 / F1 0.36 | P 0.74 / R 0.23 / F1 0.35 |
 | CIRI-long alone | P 0.77 / R 0.03 / F1 0.05 | not run |
 | circNICK-lrs alone | P 0.22 / R 0.10 / F1 0.14 | P 0.22 / R 0.10 / F1 0.14 |
-| `discovery` | P 0.54 / R 0.28 / F1 0.37 | P 0.66 / R 0.26 / F1 0.37 |
-| `balanced_recall` | P 0.81 / R 0.25 / F1 0.38 | P 0.80 / R 0.24 / F1 0.38 |
-| `balanced_precision` | P 0.85 / R 0.09 / F1 0.17 | P 0.85 / R 0.09 / F1 0.17 |
-| `high_confidence` | P 0.92 / R 0.02 / F1 0.04 | P 0.87 / R 0.01 / F1 0.02 |
+| `discovery` | P 0.66 / R 0.27 / F1 0.38 | P 0.66 / R 0.26 / F1 0.37 |
+| `balanced_recall` | P 0.80 / R 0.25 / F1 0.38 | P 0.80 / R 0.24 / F1 0.38 |
+| `balanced_precision` | P 0.84 / R 0.10 / F1 0.17 | P 0.85 / R 0.09 / F1 0.17 |
+| `high_confidence` | P 0.86 / R 0.01 / F1 0.02 | P 0.87 / R 0.01 / F1 0.02 |
 
 CIRI-long was the weakest tool on this protocol (F1 0.05, far behind its performance on the CIRI-long/circFL-seq protocols).
 
@@ -1193,7 +1193,7 @@ Ground-truth loci recovered by each of the four tools are pooled across runs and
 
 **What we see:**
 
-- **Mouse outperformed human at every tier**, on both precision and recall. The difference is largest at `balanced_precision` tier (F1 0.50 vs 0.32) and smallest at `discovery` tier (F1 0.59 vs 0.47).
+- **The species effect is real for recall, not for precision.** Pooled across every caller and circRNA type, mouse recall/F1 is significantly higher (Wilcoxon p < 10⁻¹⁵), but precision shows no significant species gap at all (p = 0.44), and actually reverses for antisense and intergenic circRNAs, where human precision is significantly higher (see [Statistical significance](#statistical-significance-1) below). NanoCirc's own merged tiers still score higher on mouse at all 4 tiers, on both precision and recall (table above) — the F1 gap is largest at `balanced_precision` (F1 0.33 human vs 0.52 mouse) and smallest at `high_confidence` (F1 0.13 vs 0.22) — but that tier-level precision edge doesn't reflect a uniform species effect once you look past nanocirc's own merged output.
 
 - **Quantification differences between species are not as big**, on both precision and recall. Quantification performance is close between species and `balanced_precision` is actually slightly stronger on human (0.974 vs 0.947).
 
@@ -1264,6 +1264,8 @@ Ranking transfers significantly on every metric. By F1:
 Six of the eight callers reach the exact same F1 rank on both species. Only circFL-seq and isoCirc swap places (circFL-seq ranks 5th on human but 6th on mouse, isoCirc the reverse).
 
 #### Per tool/mode, by metric (n=15 paired points per row: the 5 circRNA types × 3 runs, except circNICK-lrs precision n=6 and high_confidence precision n=12)
+
+F1 here is lower than the [structural precision/recall](#structural-precisionrecall-1) table above for the same tier (e.g. `discovery` 0.40/0.55 here vs 0.48/0.62 there): that table pools all circRNA types together per run before averaging across the 3 runs, while this one averages precision/recall/F1 per circRNA type first, then across type × run (15 points). The two are different aggregations of the same underlying calls, not different data.
 
 | Tool | Metric | n | Human | Mouse | Difference | Slope | Intercept | R² | Wilcoxon p | Cohen's d |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

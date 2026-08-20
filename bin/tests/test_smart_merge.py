@@ -186,6 +186,57 @@ def test_group_relaxed_requires_same_chrom_and_strand():
     assert len(groups) == 3
 
 
+# ── consensus_hybrid minority-BSJ folding ───────────────────────────────────
+
+def test_collect_entries_consensus_hybrid_folds_minority_bsj_within_tolerance():
+    tool_best = {
+        'cirilong': rec(tool='cirilong', start=100, end=200, score='5'),
+        'circfl':   rec(tool='circfl',   start=100, end=200, score='3'),
+        'isocirc':  rec(tool='isocirc',  start=102, end=200, score='2'),  # 2bp off, within tolerance
+    }
+    entries = sm.collect_entries_consensus_hybrid(tool_best, struct_tolerance=5)
+    assert len(entries) == 1
+    main = entries[0]
+    assert main['isoform_label'] == 'main'
+    assert set(main['isoform_tools']) == {'cirilong', 'circfl', 'isocirc'}
+    assert main['bsj_agree'] == 3
+
+
+def test_collect_entries_consensus_hybrid_keeps_minority_bsj_beyond_tolerance():
+    tool_best = {
+        'cirilong': rec(tool='cirilong', start=100, end=200, score='5'),
+        'circfl':   rec(tool='circfl',   start=100, end=200, score='3'),
+        'isocirc':  rec(tool='isocirc',  start=500, end=600, score='2'),  # far away
+    }
+    entries = sm.collect_entries_consensus_hybrid(tool_best, struct_tolerance=5)
+    assert len(entries) == 2
+    labels = {e['isoform_label'] for e in entries}
+    assert labels == {'main', 'iso1'}
+    iso1 = next(e for e in entries if e['isoform_label'] == 'iso1')
+    assert iso1['isoform_tools'] == ['isocirc']
+
+
+def test_collect_entries_consensus_hybrid_folds_chained_minority_bsj():
+    # 3-tool strict majority wins the BSJ vote outright at 100-200. A minority
+    # at 110-200 is beyond tolerance from the winner, so it gets its own
+    # entry (iso1). A second minority at 113-200 is within tolerance of that
+    # iso1 position (3bp) but NOT of the winner (13bp): it should fold into
+    # iso1, not spawn a separate iso2 and not fold into main.
+    tool_best = {
+        'a': rec(tool='a', start=100, end=200, score='5'),
+        'b': rec(tool='b', start=100, end=200, score='4'),
+        'c': rec(tool='c', start=100, end=200, score='3'),
+        'd': rec(tool='d', start=110, end=200, score='2'),
+        'e': rec(tool='e', start=113, end=200, score='1'),
+    }
+    entries = sm.collect_entries_consensus_hybrid(tool_best, struct_tolerance=5)
+    assert len(entries) == 2
+    main = next(e for e in entries if e['isoform_label'] == 'main')
+    iso1 = next(e for e in entries if e['isoform_label'] == 'iso1')
+    assert set(main['isoform_tools']) == {'a', 'b', 'c'}
+    assert set(iso1['isoform_tools']) == {'d', 'e'}
+
+
 # ── I/O ──────────────────────────────────────────────────────────────────
 
 def test_read_bed12_parses_fields(tmp_path):
