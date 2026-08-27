@@ -1,0 +1,4 @@
+bsj_id	supporting_tools	nanocirc_quant_reads
+chr1:1-100:+	circnick	0
+chr1:200-300:+	circnick,isocirc	0
+chr1:400-500:+	cirilong	10
