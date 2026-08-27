@@ -10,6 +10,8 @@ process CIRCRNA_SMART_MERGE {
     tuple val(meta),  val(tool_names), path(bed_files)
     tuple val(meta2), path(pair_files)
     val   n_active
+    path  fasta
+    path  fasta_fai
 
     output:
     tuple val(meta), path("${meta.id}_discovery.bed12"),                          emit: hybrid_bed
@@ -26,6 +28,7 @@ process CIRCRNA_SMART_MERGE {
     task.ext.when == null || task.ext.when
 
     script:
+    // cache_bust: smart_merge.py motif-informed pre-grouping + iso{N} label preservation on collision, 2026-08-24
     def names_arg = tool_names.join(' ')
     def files_arg = bed_files.collect { f -> f.toString() }.join(' ')
     // pair_files is empty for a single-tool run (n_active=1, no pairs possible);
@@ -37,6 +40,10 @@ process CIRCRNA_SMART_MERGE {
     def benchmarkModes = params.run_benchmark_modes instanceof String
         ? params.run_benchmark_modes.toBoolean() : (params.run_benchmark_modes as boolean)
     def benchmarkFlag  = benchmarkModes ? '--benchmark_modes' : ''
+    // fasta_fai is a NO_FILE_FASTA_FAI placeholder when the reference FASTA
+    // has no .fai next to it; skip the splice-motif strand recheck entirely
+    // in that case rather than fail the whole run over an optional check.
+    def fastaFlag = fasta_fai.name != 'NO_FILE_FASTA_FAI' ? "--fasta ${fasta}" : ''
     """
     python3 ${projectDir}/bin/smart_merge.py \\
         --sample           ${meta.id} \\
@@ -46,6 +53,7 @@ process CIRCRNA_SMART_MERGE {
         --struct_tolerance ${params.circrna_bsj_tolerance} \\
         --n_active         ${n_active} \\
         ${benchmarkFlag} \\
+        ${fastaFlag} \\
         --outdir           .
 
     # Add Low/Medium/High confidence scoring to all four mode TSVs

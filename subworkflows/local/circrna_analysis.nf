@@ -17,7 +17,6 @@ include { CIRCRNA_BEDTOOLS_PAIRS } from '../../modules/local/circrna_bedtools_pa
 include { CIRCRNA_MERGE          } from '../../misc/legacy_modules/circrna_merge'
 include { CIRCRNA_EXON_MERGE     } from '../../misc/legacy_modules/circrna_exon_merge'
 include { CIRCRNA_SMART_MERGE    } from '../../modules/local/circrna_smart_merge'
-include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_BALANCED           } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_HIGH_CONFIDENCE    } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_CONSENSUS_NO_LOW   } from '../../modules/local/circrna_confidence_filter'
 include { CIRCRNA_CONFIDENCE_FILTER as CIRCRNA_FILTER_CONSENSUS_TRUSTED  } from '../../modules/local/circrna_confidence_filter'
@@ -36,6 +35,7 @@ workflow CIRCRNA_ANALYSIS {
     take:
     ch_fastq              // channel: [ val(meta), path(fastq) ]
     fasta                 // path: reference genome FASTA
+    fasta_fai              // path: FASTA's own .fai, or a NO_FILE_FASTA_FAI placeholder
     gtf                   // path: gene annotation GTF
     circrna_db            // path: circRNA database
 
@@ -217,21 +217,21 @@ workflow CIRCRNA_ANALYSIS {
         CIRCRNA_SMART_MERGE (
             ch_for_merge.map { meta, tool_names, bed_files, pairs -> [ meta, tool_names, bed_files ] },
             ch_for_merge.map { meta, tool_names, bed_files, pairs -> [ meta, pairs ] },
-            ch_n_active
+            ch_n_active,
+            fasta,
+            fasta_fai
         )
         ch_versions = ch_versions.mix(CIRCRNA_SMART_MERGE.out.versions.first())
 
         def ch_hybrid = CIRCRNA_SMART_MERGE.out.hybrid_bed
             .join(CIRCRNA_SMART_MERGE.out.hybrid_conf, by: 0)
 
-        def ch_for_balanced        = ch_hybrid.map { meta, bed, tsv -> [ meta + [category: 'hybrid'], bed, tsv ] }
         def ch_for_high_confidence = ch_hybrid.map { meta, bed, tsv -> [ meta + [category: 'hybrid'], bed, tsv ] }
         def ch_for_consensus_trusted = ch_hybrid.map { meta, bed, tsv -> [ meta + [category: 'hybrid'], bed, tsv ] }
 
-        CIRCRNA_FILTER_BALANCED          ( ch_for_balanced )
         CIRCRNA_FILTER_HIGH_CONFIDENCE   ( ch_for_high_confidence )
-        CIRCRNA_FILTER_CONSENSUS_TRUSTED ( ch_for_consensus_trusted.map { meta, bed, tsv -> [ meta + [category: 'balanced_recall'], bed, tsv ] } )
-        ch_versions = ch_versions.mix(CIRCRNA_FILTER_BALANCED.out.versions.first())
+        CIRCRNA_FILTER_CONSENSUS_TRUSTED ( ch_for_consensus_trusted.map { meta, bed, tsv -> [ meta + [category: 'balanced'], bed, tsv ] } )
+        ch_versions = ch_versions.mix(CIRCRNA_FILTER_HIGH_CONFIDENCE.out.versions.first())
         ch_versions = ch_versions.mix(CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.versions.first())
 
         // Only used below by the benchmark-mode smart_consensus_no_low diagnostic.
@@ -261,8 +261,7 @@ workflow CIRCRNA_ANALYSIS {
         if (!skipAnnotation) {
 
             def ch_for_annotate = ch_discovery_for_annotate
-                .mix( CIRCRNA_FILTER_BALANCED.out.bed          .join(CIRCRNA_FILTER_BALANCED.out.conf,          by: 0).map { meta, bed, tsv -> [ meta + [category: 'balanced_precision'], bed, tsv ] } )
-                .mix( CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.bed .join(CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.conf, by: 0).map { meta, bed, tsv -> [ meta + [category: 'balanced_recall'],    bed, tsv ] } )
+                .mix( CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.bed .join(CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.conf, by: 0).map { meta, bed, tsv -> [ meta + [category: 'balanced'],    bed, tsv ] } )
                 .mix( CIRCRNA_FILTER_HIGH_CONFIDENCE.out.bed   .join(CIRCRNA_FILTER_HIGH_CONFIDENCE.out.conf,   by: 0).map { meta, bed, tsv -> [ meta + [category: 'high_confidence'],    bed, tsv ] } )
 
             if (runBenchmarkModes) {
@@ -331,17 +330,14 @@ workflow CIRCRNA_ANALYSIS {
 
     // Discovery: hybrid, all isoforms, unfiltered. With 1 tool active, every
     // score is trivially "100% of active tools agree" (see add_isoform_confidence.py's
-    // count_to_score), so all 4 tiers below end up identical to this: there is no
+    // count_to_score), so all 3 tiers below end up identical to this: there is no
     // second tool to disagree with, so nothing is ever Low/Medium.
     discovery_bed  = ch_n_active >= 1 ? CIRCRNA_SMART_MERGE.out.hybrid_bed  : channel.empty()
     discovery_conf = ch_n_active >= 1 ? CIRCRNA_SMART_MERGE.out.hybrid_conf : channel.empty()
-    // Balanced (precision): hybrid + no_low filter
-    balanced_bed   = ch_n_active >= 1 ? CIRCRNA_FILTER_BALANCED.out.bed        : channel.empty()
-    balanced_conf  = ch_n_active >= 1 ? CIRCRNA_FILTER_BALANCED.out.conf       : channel.empty()
-    // Balanced (recall): hybrid + trusted_only filter
-    balanced_recall_bed  = ch_n_active >= 1 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.bed  : channel.empty()
-    balanced_recall_conf = ch_n_active >= 1 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.conf : channel.empty()
-    // High-confidence: hybrid + high_only filter
+    // Balanced: hybrid + trusted_only filter
+    balanced_bed  = ch_n_active >= 1 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.bed  : channel.empty()
+    balanced_conf = ch_n_active >= 1 ? CIRCRNA_FILTER_CONSENSUS_TRUSTED.out.conf : channel.empty()
+    // High-confidence: hybrid + isocirc_only filter
     high_conf_bed  = ch_n_active >= 1 ? CIRCRNA_FILTER_HIGH_CONFIDENCE.out.bed  : channel.empty()
     high_conf_conf = ch_n_active >= 1 ? CIRCRNA_FILTER_HIGH_CONFIDENCE.out.conf : channel.empty()
 

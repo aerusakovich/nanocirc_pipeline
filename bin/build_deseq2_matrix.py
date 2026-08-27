@@ -12,13 +12,13 @@ crossrun merge at all) are unioned here, 0-filled where a run's own catalog
 never called that isoform.
 
 Usage:
-    build_deseq2_matrix.py --tier balanced_precision \
-        --counts_tsv run1=run1_balanced_precision_clean_with_counts.tsv \
-                     run2=run2_balanced_precision_clean_with_counts.tsv \
+    build_deseq2_matrix.py --tier high_confidence \
+        --counts_tsv run1=run1_high_confidence_clean_with_counts.tsv \
+                     run2=run2_high_confidence_clean_with_counts.tsv \
         --groups run1=groupA run2=groupB \
-        --out_counts   deseq2_counts_balanced_precision.tsv \
-        --out_coldata  deseq2_coldata_balanced_precision.tsv \
-        --out_features deseq2_features_balanced_precision.tsv
+        --out_counts   deseq2_counts_high_confidence.tsv \
+        --out_coldata  deseq2_coldata_high_confidence.tsv \
+        --out_features deseq2_features_high_confidence.tsv
 """
 import argparse
 

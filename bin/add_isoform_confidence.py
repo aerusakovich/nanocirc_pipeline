@@ -35,8 +35,8 @@ NOTE: bsj_score/isoform_score is a fixed scale (1 tool always Low, 3+ tools
       always High), independent of how many tools actually ran, so a given
       score means the same amount of evidence in every run. In a single-tool
       run, every call maxes out at 1 supporting tool, so bsj_consensus and
-      isoform_consensus are always Low: balanced_recall/balanced_precision/
-      high_confidence require better than Low on both axes (with narrow
+      isoform_consensus are always Low: balanced/high_confidence require
+      better than Low on both axes (with narrow
       exceptions for IsoCirc/CIRI-long that a single other tool doesn't
       qualify for), so they come back empty by design. Only discovery, plus
       its post-quantification read-count filter (filter_confident_discovery.py,

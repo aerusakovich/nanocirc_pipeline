@@ -18,18 +18,18 @@ process CIRCRNA_CROSSRUN_MERGE {
     path  "versions.yml",                                emit: versions
 
     script:
+    // cache_bust: smart_merge.py motif-informed pre-grouping + iso{N} label preservation on collision, 2026-08-24
     def sample_names = meta.sample_ids.join(' ')
     def n            = meta.sample_ids.size()
     def raw_prefix   = "${meta.id}_${meta.tier}_crossrun"
     prefix           = raw_prefix  // used in output block
     // A 1-sample group has nothing to corroborate against; requiring 2-sample
-    // support (the normal balanced/high_confidence formulas below) would drop
+    // support (the normal balanced/high_confidence formula below) would drop
     // every locus. Floor both min_count and min_corroboration at 1 for n<2,
     // so a lone sample's own tier output passes through unchanged.
     def min_count    = n < 2 ? 1
-                     : meta.tier == 'discovery'                                    ? 1
-                     : (meta.tier == 'balanced_precision' || meta.tier == 'balanced_recall') ? Math.max(2, Math.ceil(0.25 * n).toInteger())
-                     : /* high_confidence */                                        Math.ceil(0.75 * n).toInteger()
+                     : meta.tier == 'discovery' ? 1
+                     : Math.max(2, Math.ceil(0.25 * n).toInteger())
     def min_corroboration = n < 2 ? 1 : params.crossrun_min_tool_agreement
     """
     # Only consensus_hybrid is computed here (see write_outputs()).

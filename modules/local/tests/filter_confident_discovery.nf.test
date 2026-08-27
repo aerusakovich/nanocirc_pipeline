@@ -61,7 +61,7 @@ nextflow_process {
             def cleanTsv = path(process.out.clean[0][1]).text
             assertAll(
                 { assert process.success },
-                // circnick-only rule only fires for discovery/balanced_recall, so all 3 rows survive here
+                // circnick-only rule only fires for discovery/balanced, so all 3 rows survive here
                 { assert cleanTsv.readLines().size() == 4 },
                 { assert cleanTsv.contains('chr1:1-100:+') }
             )

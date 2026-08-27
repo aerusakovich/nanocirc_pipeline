@@ -156,7 +156,9 @@ def main():
     print(f"  [{args.sample}] circnick : {len(readsets['circnick']):6d} loci (native count only, no read IDs)")
 
     READ_TOOLS = ["isocirc", "circfl", "cirilong"]
-    coords = catalog.set_index("bsj_id")[["chrom", "start", "end", "strand"]]
+    # A bsj_id can repeat across multiple isoform rows (multi-isoform recovery);
+    # chrom/start/end/strand are identical across those rows, so any one suffices.
+    coords = catalog.drop_duplicates(subset="bsj_id").set_index("bsj_id")[["chrom", "start", "end", "strand"]]
 
     union_counts, circnick_counts = {}, {}
     for row in tool_presence.itertuples(index=False):

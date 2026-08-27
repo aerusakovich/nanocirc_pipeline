@@ -137,7 +137,7 @@ All pairwise combinations of active tools are compared using `bedtools intersect
 
 ### Merge algorithms
 
-The pipeline uses `consensus_hybrid` as its merge algorithm for all four tiers. See [docs/methods.md](methods.md#merge-algorithms) for how BSJ/structure voting and multi-isoform recovery work.
+The pipeline uses `consensus_hybrid` as its merge algorithm for all three tiers. See [docs/methods.md](methods.md#merge-algorithms) for how BSJ/structure voting and multi-isoform recovery work.
 
 #### Default output files
 
@@ -147,25 +147,22 @@ The pipeline uses `consensus_hybrid` as its merge algorithm for all four tiers. 
 - `circrna/<sample>/merged/`
   - `<sample>_discovery.bed12`: hybrid, unfiltered (maximum recall)
   - `<sample>_discovery_confidence.tsv`
-  - `<sample>_balanced_precision.bed12`: hybrid + isocirc_only filter (F1 / precision-leaning - lowest FP for decent recall)
-  - `<sample>_balanced_precision_confidence.tsv`
-  - `<sample>_balanced_recall.bed12`: hybrid + trusted_only filter (best F1, recall-leaning)
-  - `<sample>_balanced_recall_confidence.tsv`
-  - `<sample>_high_confidence.bed12`: hybrid + high_only_isocirc filter (best precision, trusted subset)
+  - `<sample>_balanced.bed12`: hybrid + trusted_only filter (best F1, recall-leaning)
+  - `<sample>_balanced_confidence.tsv`
+  - `<sample>_high_confidence.bed12`: hybrid + isocirc_only filter (best precision for the recall it keeps)
   - `<sample>_high_confidence_confidence.tsv`
 
 </details>
 
-Four confidence-filtered outputs are published by default. After merging, each entry is scored on two independent confidence axes (`bsj_consensus` and `isoform_consensus`, each Low / Medium / High) and one of the following filters is applied:
+Three confidence-filtered outputs are published by default. After merging, each entry is scored on two independent confidence axes (`bsj_consensus` and `isoform_consensus`, each Low / Medium / High) and one of the following filters is applied:
 
 | Output | Merge algorithm | Filter | Rule | Axes retained |
 | ------ | ---------------- | ------ | ---- | ------------- |
 | **`discovery`** | `consensus_hybrid` | none | Keep all entries | any |
-| **`balanced_precision`** | `consensus_hybrid` | `isocirc_only` | Drop entries where either axis is Low, unless the source is IsoCirc | ≥ Medium on both, or Low from IsoCirc |
-| **`balanced_recall`** | `consensus_hybrid` | `trusted_only` | Drop entries where either axis is Low, unless the source is a trusted tool (`--circrna_trusted_tools`, default CIRI-long/IsoCirc/CircFL-seq) | ≥ Medium on both, or Low from a trusted tool |
-| **`high_confidence`** | `consensus_hybrid` | `high_only_isocirc` | Keep only entries where both axes are High, unless Low and the source is IsoCirc | High on both, or Low from IsoCirc |
+| **`balanced`** | `consensus_hybrid` | `trusted_only` | Drop entries where either axis is Low, unless the source is a trusted tool (`--circrna_trusted_tools`, default CIRI-long/IsoCirc/CircFL-seq) | ≥ Medium on both, or Low from a trusted tool |
+| **`high_confidence`** | `consensus_hybrid` | `isocirc_only` | Drop entries where either axis is Low, unless the source is IsoCirc | ≥ Medium on both, or Low from IsoCirc |
 
-If `--run_quantify true` is also set, `discovery`/`balanced_recall`/`high_confidence` get a further post-quantification confidence filter on top of this table -- see [Quantification](#quantification) below. This filter does not run on `balanced_precision`: its "Low from IsoCirc" entries pass as-is, favoring recall, whereas `high_confidence` additionally requires read support there since that tier prioritizes precision over recall.
+If `--run_quantify true` is also set, all three tiers get a further post-quantification confidence filter on top of this table -- see [Quantification](#quantification) below. On `discovery`/`balanced` this drops loci where CircNick-LRS is the only supporting tool and read support is weak; on `high_confidence` it instead drops loci where IsoCirc is the only supporting tool and read support is weak, guarding the "Low from IsoCirc" exception opened by `isocirc_only` above so that door doesn't erode this tier's precision.
 
 #### Additional merge modes (`--run_benchmark_modes`)
 
@@ -181,7 +178,7 @@ All `*_confidence.tsv` files share a common format. Confidence is assessed on tw
 | `start`              | BSJ start (0-based)                                                         |
 | `end`                | BSJ end                                                                     |
 | `strand`             | Strand (`+` or `-`)                                                         |
-| `bsj_id`             | Unique identifier: `chrom:start-end:strand` (isoforms suffixed `\|iso*`)   |
+| `bsj_id`             | Unique identifier: `chrom:start-end:strand` (isoforms suffixed `\|iso*`; rare strand-recheck collisions suffixed `\|dup{N}` instead, see [docs/methods.md](methods.md#splice-motif-strand-recheck)) |
 | `bsj_confidence`     | Number of tools detecting this BSJ (1–4)                                    |
 | `<tool>`             | Per-tool presence flag: `1` if detected, `0` if not (one column per tool)  |
 | `<tool>_block_sizes` | BED12 block sizes from this tool's call                                     |
@@ -204,7 +201,7 @@ See [docs/methods.md#scoring-bins](methods.md#scoring-bins) for how `bsj_score`/
 
 ## Annotation
 
-Each merged output (discovery, balanced_precision, balanced_recall, high_confidence) is annotated per sample. Annotation runs when `--skip_annotation` is not set (default: enabled).
+Each merged output (discovery, balanced, high_confidence) is annotated per sample. Annotation runs when `--skip_annotation` is not set (default: enabled).
 
 ### Output structure
 
@@ -224,7 +221,7 @@ Each merged output (discovery, balanced_precision, balanced_recall, high_confide
 
 </details>
 
-`<tier>` is one of `discovery`, `balanced_precision`, `balanced_recall`, or `high_confidence`.
+`<tier>` is one of `discovery`, `balanced`, or `high_confidence`.
 
 ### Clean TSV format
 
@@ -270,7 +267,7 @@ When `--run_crossrun_merge true` is set and the samplesheet contains a `group` c
 
 </details>
 
-`<tier>` is one of `discovery`, `balanced_precision`, `balanced_recall`, or `high_confidence`. `<group>` is the group name from the samplesheet.
+`<tier>` is one of `discovery`, `balanced`, or `high_confidence`. `<group>` is the group name from the samplesheet.
 
 ### Count thresholds
 
@@ -279,9 +276,8 @@ Minimum number of runs that must detect a circRNA for it to be retained, where `
 | Tier              | Minimum runs required        |
 | ----------------- | ---------------------------- |
 | `discovery`       | ≥ 1 (all circRNAs retained)  |
-| `balanced_precision` | ≥ max(2, ceil(0.25 × n))  |
-| `balanced_recall` | ≥ max(2, ceil(0.25 × n))     |
-| `high_confidence` | ≥ ceil(0.75 × n)             |
+| `balanced`        | ≥ max(2, ceil(0.25 × n))     |
+| `high_confidence` | ≥ max(2, ceil(0.25 × n))     |
 
 ### Cross-run confidence TSV format
 
@@ -314,7 +310,7 @@ Quantification counts are appended onto each sample's per-tier clean TSV (`circr
 - `circrna/<sample>/quantify/`
   - `<sample>_quant_final_counts.tsv`: raw per-locus read counts from the tier1/tier2/tier3 rescue passes, before being joined onto the clean TSV
 - `circrna/<sample>/merged/clean/`
-  - `<sample>_<tier>_clean_with_counts.tsv`: clean TSV with quantification columns appended (see above), and (for `discovery`/`balanced_recall`/`high_confidence`) the confidence filter applied
+  - `<sample>_<tier>_clean_with_counts.tsv`: clean TSV with quantification columns appended (see above), and (for `discovery`/`balanced`/`high_confidence`) the confidence filter applied
 - `circrna/<sample>/merged/`
   - `<sample>_<tier>.bed12`: matching BED12, same filtering applied where relevant (supersedes the pre-quantification version at this same path)
 

@@ -18,6 +18,7 @@ process QUANT_COVERAGE_FLAG {
     task.ext.when == null || task.ext.when
 
     script:
+    // cache_bust: quant_tool_readset_union.py dedupe catalog by bsj_id (multi-isoform rows), 2026-08-24
     def min_old_tool_count = params.quant_min_old_tool_count ?: 50
     // Inactive or absent tool inputs arrive as a per-tool NO_FILE_* sentinel
     // (see circrna_analysis.nf). Only pass the corresponding flag through

@@ -16,9 +16,9 @@ which run it belongs to.
 
 Usage:
     append_run_counts_matrix.py \\
-        --clean_tsv     run1_balanced_precision_clean_with_counts.tsv \\
-        --counts_matrix deseq2_counts_balanced_precision.tsv \\
-        --output        run1_balanced_precision_clean_with_counts.tsv
+        --clean_tsv     run1_high_confidence_clean_with_counts.tsv \\
+        --counts_matrix deseq2_counts_high_confidence.tsv \\
+        --output        run1_high_confidence_clean_with_counts.tsv
 """
 import argparse
 

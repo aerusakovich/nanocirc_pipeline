@@ -100,6 +100,12 @@ def parse_args(args=None):
                         'modes, only used by --run_benchmark_modes diagnostics). '
                         'Ignored in cross-run mode (--conf_tsvs), where these are '
                         'never read.')
+    p.add_argument('--fasta',      default=None,
+                   help='Reference genome FASTA (needs a .fai alongside it). '
+                        'When given, every output entry\'s strand is rechecked '
+                        'against canonical splice-site motifs at its own BSJ and '
+                        'exon-exon junctions (see resolve_strand_by_motif). '
+                        'Omit to skip this check entirely (strand stays as-called).')
     return p.parse_args(args)
 
 
@@ -165,6 +171,125 @@ def load_conf_lookup(path):
                 'struct_source': row.get('struct_source', '') or None,
             }
     return lookup
+
+
+# ── Splice-motif strand check ────────────────────────────────────────────────
+# Every tool's strand call is only as good as its own internal heuristic, and
+# those heuristics agree with each other far more often than they agree with
+# the truth for antisense circRNAs (a circRNA on the strand opposite its host
+# gene): the overlapping sense-strand mRNA pulls every tool's call toward the
+# gene's own strand. Since all tools can be wrong the same way, cross-tool
+# consensus can't catch it -- but the genome sequence itself can. A real BSJ
+# has a canonical splice acceptor/donor (AG...GT for a '+' feature, the
+# reverse complement AC...CT for '-') flanking it, and every internal
+# exon-exon junction of a multi-exon call has its own, independent copy of
+# the same signal.
+
+class FastaRandomAccess:
+    """Minimal .fai-indexed random access into a FASTA, no samtools/pysam
+    dependency (this pipeline's containers don't ship either)."""
+
+    def __init__(self, fasta_path):
+        self.index = {}
+        with open(fasta_path + '.fai') as fh:
+            for line in fh:
+                name, length, offset, linebases, linewidth = line.rstrip('\n').split('\t')
+                self.index[name] = (int(length), int(offset), int(linebases), int(linewidth))
+        self.fh = open(fasta_path, 'rb')
+
+    def fetch(self, chrom, start, end):
+        """0-based half-open [start, end). Returns '' if out of range or
+        chrom unknown (never raises, callers treat '' as no-motif)."""
+        entry = self.index.get(chrom)
+        if entry is None:
+            return ''
+        length, offset, linebases, linewidth = entry
+        start = max(0, start)
+        end = min(length, end)
+        if start >= end:
+            return ''
+        out = bytearray()
+        pos = start
+        while pos < end:
+            line_no = pos // linebases
+            col = pos % linebases
+            file_pos = offset + line_no * linewidth + col
+            self.fh.seek(file_pos)
+            chunk = self.fh.read(min(linebases - col, end - pos)).replace(b'\n', b'')
+            if not chunk:
+                break
+            out += chunk
+            pos += len(chunk)
+        return out.decode('ascii').upper()
+
+
+def _exon_boundaries(start, block_sizes, block_starts):
+    """[(exon_start, exon_end), ...] in absolute genomic coords, from a
+    BED12 block_sizes/block_starts pair."""
+    sizes = [int(x) for x in block_sizes.rstrip(',').split(',') if x]
+    starts = [int(x) for x in block_starts.rstrip(',').split(',') if x]
+    return [(start + s, start + s + sz) for s, sz in zip(starts, sizes)]
+
+
+def _junction_votes(fa, chrom, start, end, block_sizes, block_starts):
+    """plus_votes, minus_votes, n_junctions across the outer BSJ plus every
+    internal exon-exon junction. Each junction is scored independently by
+    its own donor_seq/acceptor_seq pair, read genome-forward:
+      '+' : donor_seq == 'GT', acceptor_seq == 'AG'
+      '-' : donor_seq == 'CT', acceptor_seq == 'AC'  (reverse complement)
+    The outer BSJ's intron is OUTSIDE [start, end) (flanking it): donor is
+    just after end, acceptor just before start. An internal junction's
+    intron IS the gap between two exons, so its own donor/acceptor sit
+    INSIDE that gap, at its own two edges."""
+    exons = _exon_boundaries(start, block_sizes, block_starts)
+    junctions = [(start, end)]
+    for i in range(len(exons) - 1):
+        junctions.append((exons[i][1], exons[i + 1][0]))
+
+    plus_votes = minus_votes = 0
+    for j_idx, (j_start, j_end) in enumerate(junctions):
+        if j_idx == 0:
+            donor_seq = fa.fetch(chrom, j_end, j_end + 2)
+            acceptor_seq = fa.fetch(chrom, j_start - 2, j_start)
+        else:
+            donor_seq = fa.fetch(chrom, j_start, j_start + 2)
+            acceptor_seq = fa.fetch(chrom, j_end - 2, j_end)
+        if donor_seq == 'GT' and acceptor_seq == 'AG':
+            plus_votes += 1
+        if donor_seq == 'CT' and acceptor_seq == 'AC':
+            minus_votes += 1
+    return plus_votes, minus_votes, len(junctions)
+
+
+def resolve_strand_by_motif(fa, chrom, start, end, called_strand, block_sizes, block_starts):
+    """Compares splice-motif evidence to the CALLED strand only (never to
+    ground truth, which isn't available on real data). Returns (new_strand,
+    status):
+      called_strand == '.'  -> ('.', 'unresolved_by_tool'): nothing to check,
+                                the tool never claimed a strand.
+      single-junction (single-exon) calls never get a hard flip: on real
+      antisense-vs-sense-gene data this bare 2bp check is confidently wrong
+      about 10% of the time on a single junction, too risky to act on alone.
+      They can only be 'confirmed' or downgraded to 'ambiguous' ('.').
+      2+-junction calls: 'confirmed' if every junction agrees with the
+      called strand and none support the opposite; 'flipped' if every
+      junction unanimously supports the OTHER strand instead (empirically
+      zero false positives down this path on real multi-exon data); anything
+      else (mixed signal) -> 'ambiguous' ('.').
+    """
+    if called_strand not in ('+', '-'):
+        return '.', 'unresolved_by_tool'
+
+    plus_votes, minus_votes, n = _junction_votes(fa, chrom, start, end, block_sizes, block_starts)
+    own_votes = plus_votes if called_strand == '+' else minus_votes
+    opp_votes = minus_votes if called_strand == '+' else plus_votes
+    opposite_strand = '-' if called_strand == '+' else '+'
+
+    if own_votes == n and opp_votes == 0:
+        return called_strand, 'confirmed'
+    if n >= 2 and opp_votes == n and own_votes == 0:
+        return opposite_strand, 'flipped'
+    return '.', 'ambiguous'
 
 
 # ── Grouping ───────────────────────────────────────────────────────────────────
@@ -826,7 +951,7 @@ def cross_run_hybrid_entries(tool_map, struct_tolerance, min_corroboration=2):
        run count. This must stay separate from the structure vote:
        crossrun_annotate.py's tier filter reads bsj_confidence as "how many
        runs support this BSJ", not "how many runs support the winning
-       structure". Mixing the two would quietly change balanced_recall and
+       structure". Mixing the two would quietly change balanced and
        high_confidence tier membership in a way nobody checked against
        ground truth.
 
@@ -977,8 +1102,9 @@ def bed12_line(chrom, start, end, name, score, strand,
 
 
 def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_run_mode=False,
-                   min_corroboration=2, benchmark_modes=False):
+                   min_corroboration=2, benchmark_modes=False, fasta=None):
     os.makedirs(outdir, exist_ok=True)
+    fa = FastaRandomAccess(fasta) if fasta else None
 
     # consensus/consensus_xstruct/priority: legacy modes, only read under
     # --run_benchmark_modes, never in cross_run_mode.
@@ -997,6 +1123,7 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
         + ['sel_block_count', 'sel_block_sizes', 'sel_block_starts']
         + ['bsj_source', 'struct_source', 'struct_agree_count', 'max_score']
         + ['isoform_label', 'isoform_tools']
+        + ['strand_old', 'strand_new', 'strand_status']
     )
 
     mode_lines = {
@@ -1008,6 +1135,17 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
 
     computed_modes = {'consensus', 'consensus_xstruct', 'consensus_hybrid', 'priority'} \
         if run_legacy_modes else {'consensus_hybrid'}
+
+    # (chrom, start, end, strand) keys already emitted, per mode. group_relaxed
+    # guarantees two DIFFERENT groups never share a real strand at the same
+    # coordinates, but the per-entry motif-based strand flip below runs after
+    # that grouping decision and knows nothing about other groups: two
+    # separate conflicting-strand groups (kept apart on purpose) can each
+    # independently flip toward the SAME true strand, producing a duplicate
+    # bsj_id that breaks every downstream script's assumption that bsj_id is
+    # unique. Refuse a flip that would create that collision; downgrade to
+    # ambiguous ('.') instead, which never collides with the other side.
+    claimed_keys_by_mode = defaultdict(set)
 
     for group_key, tool_map in sorted(groups.items()):
         chrom, _, _, strand = group_key
@@ -1048,8 +1186,44 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
                 label   = entry['isoform_label']
                 iso_tools_str = ','.join(sorted(entry['isoform_tools']))
 
-                bsj_id = make_bsj_id(chrom, start, end, strand,
-                                      suffix=(label if label != 'main' else None))
+                if fa is not None:
+                    resolved_strand, strand_status = resolve_strand_by_motif(
+                        fa, chrom, start, end, strand, srec['block_sizes'], srec['block_starts'])
+                else:
+                    resolved_strand, strand_status = strand, 'not_checked'
+
+                claimed = claimed_keys_by_mode[mode]
+                key = (chrom, start, end, resolved_strand)
+                if key in claimed:
+                    resolved_strand, strand_status = '.', 'ambiguous'
+                    key = (chrom, start, end, resolved_strand)
+
+                suffix = label if label != 'main' else None
+                if key in claimed:
+                    # Even '.' collides: most often this is a same-BSJ
+                    # multi-isoform entry (isoform_label already iso1/iso2/...)
+                    # whose own independent motif check happened to land on
+                    # the same resolved strand as an earlier isoform at this
+                    # same BSJ -- keep its real iso{N} suffix in that case,
+                    # since (coords, strand, label) itself is still free. Only
+                    # fall back to a generic dup{N} counter when even that
+                    # collides too: two separate groups both landing on the
+                    # same coords, strand, AND label (real case, not just
+                    # theoretical -- hit on mouse species benchmark data).
+                    # Uniqueness, which every downstream quant script assumes,
+                    # holds either way.
+                    label_key = key + (suffix,)
+                    if suffix is not None and label_key not in claimed:
+                        claimed.add(label_key)
+                    else:
+                        dup_n = 2
+                        while key + (f'dup{dup_n}',) in claimed:
+                            dup_n += 1
+                        suffix = f'dup{dup_n}'
+                        claimed.add(key + (suffix,))
+                claimed.add(key)
+
+                bsj_id = make_bsj_id(chrom, start, end, resolved_strand, suffix=suffix)
 
                 # consensus_hybrid: use srec's own score, not tool_best[t]'s,
                 # which could be a different record with a higher score and
@@ -1065,12 +1239,12 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
                     score = max_score_of(iso_tool_recs) if iso_tool_recs else group_score
 
                 bed = bed12_line(
-                    chrom, start, end, bsj_id, score, strand,
+                    chrom, start, end, bsj_id, score, resolved_strand,
                     srec['block_count'], srec['block_sizes'], srec['block_starts']
                 )
 
                 tsv_row = '\t'.join(
-                    [chrom, str(start), str(end), strand, bsj_id,
+                    [chrom, str(start), str(end), resolved_strand, bsj_id,
                      str(entry['bsj_agree'])]    # bsj_confidence = tool-agreement count
                     + flags
                     + blocks
@@ -1079,6 +1253,7 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
                     + [entry['bsj_src'], entry['struct_src'],
                        str(entry['struct_agree']), str(score)]  # max_score last
                     + [label, iso_tools_str]
+                    + [strand, resolved_strand, strand_status]
                 )
 
                 mode_lines[mode]['bed'].append(bed)
@@ -1124,6 +1299,20 @@ def main():
     if cross_run_mode and len(args.conf_tsvs) != len(args.bed_files):
         print_error('--conf_tsvs must have the same number of entries as --bed_files')
 
+    # Resolve each raw record's strand by splice motif before grouping, so
+    # group_relaxed's strand-compatibility check sees motif-corrected strands
+    # instead of each tool's raw call. Two tools calling the identical
+    # structure on opposite strands would otherwise be split into two
+    # separate groups (a real strand conflict, by group_relaxed's own rule)
+    # even when the motif independently resolves both to the same true
+    # strand -- silently halving their combined bsj_confidence across two
+    # weaker entries instead of combining it into one (confirmed on real
+    # data: ciri_long_run1 chr10:46580893-46581036, cirilong '+' vs circnick
+    # '.', each bsj_confidence=1 instead of a combined 2). Pre-resolving
+    # means a group only stays split when two records' OWN independent
+    # motif evidence disagrees, i.e. a real antisense pair.
+    fa_pre = FastaRandomAccess(args.fasta) if args.fasta else None
+
     all_records  = []
     active_tools = []
     conf_paths = args.conf_tsvs if cross_run_mode else [None] * len(args.bed_files)
@@ -1135,6 +1324,12 @@ def main():
                 info = conf_lookup.get(rec['name'], {})
                 rec['struct_agree']  = info.get('struct_agree', 0)
                 rec['struct_source'] = info.get('struct_source')
+        if fa_pre is not None:
+            for rec in recs:
+                resolved, _status = resolve_strand_by_motif(
+                    fa_pre, rec['chrom'], rec['start'], rec['end'],
+                    rec['strand'], rec['block_sizes'], rec['block_starts'])
+                rec['strand'] = resolved
         if recs:
             all_records.extend(recs)
             active_tools.append(tool)
@@ -1166,7 +1361,7 @@ def main():
     groups = group_relaxed(all_records, args.tolerance)
     write_outputs(groups, ordered, args.sample, args.outdir, struct_tol,
                   cross_run_mode=cross_run_mode, min_corroboration=args.min_corroboration,
-                  benchmark_modes=args.benchmark_modes)
+                  benchmark_modes=args.benchmark_modes, fasta=args.fasta)
 
 
 if __name__ == '__main__':

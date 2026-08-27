@@ -129,9 +129,17 @@ workflow NANOCIRC {
             }
     }
 
+    // Optional: splice-motif strand recheck in CIRCRNA_SMART_MERGE needs the
+    // FASTA's own .fai alongside it. Not required for the pipeline to run at
+    // all (unlike --fasta itself): a missing .fai just skips that recheck,
+    // same as passing no --fasta to smart_merge.py directly.
+    def fastaFaiPath = file("${params.fasta}.fai")
+    def ch_fasta_fai = fastaFaiPath.exists() ? fastaFaiPath : file('NO_FILE_FASTA_FAI')
+
     CIRCRNA_ANALYSIS (
         ch_fastq,
         file(params.fasta, checkIfExists: true),
+        ch_fasta_fai,
         file(params.gtf,   checkIfExists: true),
         params.circrna_db ? file(params.circrna_db, checkIfExists: true) : file('NO_FILE')
     )
@@ -155,9 +163,7 @@ workflow NANOCIRC {
         def ch_crossrun = group_by_tier.call(
                 CIRCRNA_ANALYSIS.out.discovery_bed,  CIRCRNA_ANALYSIS.out.discovery_conf,  'discovery')
             .mix(group_by_tier.call(
-                CIRCRNA_ANALYSIS.out.balanced_bed,   CIRCRNA_ANALYSIS.out.balanced_conf,   'balanced_precision'))
-            .mix(group_by_tier.call(
-                CIRCRNA_ANALYSIS.out.balanced_recall_bed, CIRCRNA_ANALYSIS.out.balanced_recall_conf, 'balanced_recall'))
+                CIRCRNA_ANALYSIS.out.balanced_bed, CIRCRNA_ANALYSIS.out.balanced_conf, 'balanced'))
             .mix(group_by_tier.call(
                 CIRCRNA_ANALYSIS.out.high_conf_bed,  CIRCRNA_ANALYSIS.out.high_conf_conf,  'high_confidence'))
 
@@ -225,7 +231,7 @@ workflow NANOCIRC {
                 .map     { _unit_id, meta, tier, tsv -> [meta + [category: tier], tsv] }
         } else {
             ch_clean_for_quant = CIRCRNA_ANALYSIS.out.clean_tsv
-                .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_precision', 'balanced_recall', 'high_confidence'] }
+                .filter { meta, _tsv -> meta.category in ['discovery', 'balanced', 'high_confidence'] }
         }
 
         def ch_clean_for_append = ch_clean_for_quant
@@ -244,20 +250,17 @@ workflow NANOCIRC {
                 .combine ( CIRCRNA_CROSSRUN_MERGE.out.bed.map { m, bed -> [m.id, m.tier, bed] }, by: 0 )
                 .map     { _unit_id, meta, tier, bed -> [meta + [category: tier], bed] }
         } else {
-            ch_bed_for_quant = CIRCRNA_ANALYSIS.out.discovery_bed.map        { m, b -> [m + [category: 'discovery'],          b] }
-                .mix( CIRCRNA_ANALYSIS.out.balanced_bed.map        { m, b -> [m + [category: 'balanced_precision'],  b] } )
-                .mix( CIRCRNA_ANALYSIS.out.balanced_recall_bed.map { m, b -> [m + [category: 'balanced_recall'],     b] } )
-                .mix( CIRCRNA_ANALYSIS.out.high_conf_bed.map       { m, b -> [m + [category: 'high_confidence'],    b] } )
+            ch_bed_for_quant = CIRCRNA_ANALYSIS.out.discovery_bed.map  { m, b -> [m + [category: 'discovery'],       b] }
+                .mix( CIRCRNA_ANALYSIS.out.balanced_bed.map    { m, b -> [m + [category: 'balanced'],        b] } )
+                .mix( CIRCRNA_ANALYSIS.out.high_conf_bed.map   { m, b -> [m + [category: 'high_confidence'], b] } )
         }
 
-        // balanced_precision included purely to republish its crossrun-broadcast
-        // bed12/tsv; should_drop() can never match this category, so it's a no-op filter.
         def ch_for_confident_filter = QUANT_APPEND_COUNTS.out.clean
-            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced_recall', 'balanced_precision', 'high_confidence'] }
+            .filter { meta, _tsv -> meta.category in ['discovery', 'balanced', 'high_confidence'] }
             .map    { meta, tsv -> [[meta.id, meta.category], meta, tsv] }
             .combine(
                 ch_bed_for_quant
-                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced_recall', 'balanced_precision', 'high_confidence'] }
+                    .filter { meta, _bed -> meta.category in ['discovery', 'balanced', 'high_confidence'] }
                     .map    { meta, bed -> [[meta.id, meta.category], bed] },
                 by: 0
             )

@@ -186,14 +186,14 @@
                 "circrna_trusted_tools": {
                     "type": "string",
                     "default": "cirilong,isocirc,circfl",
-                    "description": "balanced_recall's trusted_only filter: comma-separated tools whose Low-confidence single-tool calls still get rescued.",
+                    "description": "balanced's trusted_only filter: comma-separated tools whose Low-confidence single-tool calls still get rescued.",
                     "fa_icon": "fas fa-filter"
                 },
                 "circrna_confident_min_reads": {
                     "type": "integer",
                     "default": 2,
                     "minimum": 0,
-                    "description": "Discovery/balanced_recall confidence filter: drop CircNick-LRS-only loci at or below this many quantified reads.",
+                    "description": "Discovery/balanced confidence filter: drop CircNick-LRS-only loci at or below this many quantified reads.",
                     "fa_icon": "fas fa-filter"
                 },
                 "crossrun_min_tool_agreement": {

@@ -149,7 +149,7 @@ These options control how results from multiple tools are merged and scored:
 | --------------------------- | ------------------------------------------------------------------------ | ------- |
 | `--circrna_bsj_tolerance`   | BSJ coordinate tolerance in bp for relaxed BSJ grouping during merge    | `5`     |
 | `--circrna_isoform_overlap` | Minimum reciprocal spliced-length overlap for isoform confidence scoring | `0.95`  |
-| `--circrna_trusted_tools`   | Comma-separated tools whose Low-confidence single-tool calls `balanced_recall`'s `trusted_only` filter still rescues | `cirilong,isocirc,circfl` |
+| `--circrna_trusted_tools`   | Comma-separated tools whose Low-confidence single-tool calls `balanced`'s `trusted_only` filter still rescues | `cirilong,isocirc,circfl` |
 
 Merging is only performed when **two or more** detection tools are active.
 
@@ -211,7 +211,7 @@ nextflow run aerusakovich/nanocirc_pipeline \
 | `--quant_chunk_seed`             | Fixed shuffle seed for chunk assignment                             | `42`    |
 | `--quant_locus_dedup_tolerance`  | bp tolerance (both start AND end) for near-duplicate locus dedup   | `10`    |
 | `--quant_min_old_tool_count`     | Min independent old-tool-count to flag a locus for tier2 rescue    | `50`    |
-| `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced_recall confidence filter (see above) | `2` |
+| `--circrna_confident_min_reads`  | Max quantified read count for the discovery/balanced confidence filter (see above) | `2` |
 
 `--run_quantify true` also builds a DESeq2-ready count matrix per confidence tier automatically; no additional flags. See [docs/output.md](output.md#deseq2-count-matrix) for the output files.
 

@@ -71,7 +71,7 @@ def test_trusted_only_drops_low_isoform_if_no_tool_trusted():
     assert fc.passes_filter(cols, idx, 'trusted_only', TRUSTED) is False
 
 
-# ── isocirc_only / high_only_isocirc: narrow isocirc-only exception ────────
+# ── isocirc_only: narrow isocirc-only exception (this pipeline's high_confidence tier) ─
 
 def test_isocirc_only_rescues_low_bsj_from_isocirc():
     cols, idx = make_row('Low', 'High', bsj_source='isocirc')
@@ -87,16 +87,6 @@ def test_isocirc_only_does_not_rescue_low_bsj_from_other_trusted_tool():
 def test_isocirc_only_rescues_low_isoform_when_isocirc_present():
     cols, idx = make_row('High', 'Low', isoform_tools='isocirc,circnick')
     assert fc.passes_filter(cols, idx, 'isocirc_only', TRUSTED) is True
-
-
-def test_high_only_isocirc_rescues_low_axis_but_not_medium():
-    cols, idx = make_row('Low', 'Medium', bsj_source='isocirc')
-    assert fc.passes_filter(cols, idx, 'high_only_isocirc', TRUSTED) is False
-
-
-def test_high_only_isocirc_keeps_isocirc_low_bsj_with_high_isoform():
-    cols, idx = make_row('Low', 'High', bsj_source='isocirc')
-    assert fc.passes_filter(cols, idx, 'high_only_isocirc', TRUSTED) is True
 
 
 # ── fallback for non-smart TSVs (tool presence flags instead of source cols) ─

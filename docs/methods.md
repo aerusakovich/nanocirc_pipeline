@@ -65,7 +65,7 @@ All tools within a relaxed-BSJ group (coordinates within `--circrna_bsj_toleranc
 
 ### Default merge mode: `consensus_hybrid`
 
-The pipeline uses `consensus_hybrid` for all four confidence tiers: `discovery`, `balanced_precision`, `balanced_recall`, and `high_confidence`.
+The pipeline uses `consensus_hybrid` for all three confidence tiers: `discovery`, `balanced`, and `high_confidence`.
 
 | Property | `consensus_hybrid` |
 | -------- | ------------------- |
@@ -79,6 +79,17 @@ The pipeline uses `consensus_hybrid` for all four confidence tiers: `discovery`,
 This selects the most-supported exon structure among tools that agree on the BSJ, without shifting coordinates from tools that chose a slightly different junction. Minority-BSJ isoforms are preserved in the output rather than discarded.
 
 **Multi-isoform recovery**: `isocirc`, `circfl-seq`, and `ciri-long` each often correctly resolve more than one real isoform at a single BSJ (different reads supporting different structures). Rather than collapsing each tool to its single best call before voting, `consensus_hybrid` runs the vote above to pick the winning BSJ and its primary structure, then adds back every other isoform call from those three tools at the winning BSJ that doesn't already match an existing entry. `circnick-lrs` collapses to its single best call, since its own isoform-level calls are unreliable (near-zero true-isoform recovery even under a loose reciprocal-overlap threshold). 
+
+### Splice-motif strand recheck
+
+When a reference FASTA and its `.fai` index are available (`--fasta`), every merged entry's called strand is checked against the genomic splice-site motif at each of its exon-exon junctions, including the outer BSJ: `+` strand expects donor/acceptor `GT`/`AG`, `-` strand expects the reverse-complement `CT`/`AC`. This compares only against the tool's own called strand, never against ground truth (unavailable on real data).
+
+- Single-junction (single-exon) calls are never hard-flipped to the opposite strand: on real antisense-vs-sense-gene data, a lone 2bp motif check is confidently wrong about 10% of the time, too risky to act on alone. They can only be confirmed or downgraded to ambiguous (`.`).
+- Calls with 2 or more junctions are flipped to the opposite strand only when every junction unanimously supports it and none support the called strand; any other mixed signal downgrades to ambiguous (`.`) instead of flipping.
+- A call with no strand at all (`.`) is left alone: there is nothing to check.
+- Skipped entirely, with every entry passed through unchecked, when the FASTA has no `.fai` next to it, since the recheck isn't required for the pipeline to run.
+
+**Collision handling**: two entries can independently resolve to the same `(chrom, start, end, strand)` -- most commonly two different candidate groups both downgrading to the same ambiguous `.` coordinates -- which would otherwise produce duplicate `bsj_id`s, a uniqueness every downstream quantification script assumes holds. An entry that collides is pushed to ambiguous (`.`) first; if it still collides there, a `dup{N}` suffix (`dup2`, `dup3`, ...) is appended to its `bsj_id` to guarantee uniqueness.
 
 ### Additional modes (`--run_benchmark_modes` only)
 
@@ -96,16 +107,15 @@ Three further algorithms were tested and outperformed by `consensus_hybrid` in b
 
 ### Confidence tiers
 
-After merging, each entry is scored on the two independent axes above, then one of four filters is applied:
+After merging, each entry is scored on the two independent axes above, then one of three filters is applied:
 
 | Tier | Merge algorithm | Filter | Rule | Axes retained |
 | ---- | ----------------- | ------ | ---- | --------------- |
 | `discovery` | `consensus_hybrid` | none | Keep all entries | any |
-| `balanced_precision` | `consensus_hybrid` | `isocirc_only` | Drop entries where either axis is Low, unless the source is IsoCirc | ≥ Medium on both, or Low from IsoCirc |
-| `balanced_recall` | `consensus_hybrid` | `trusted_only` | Drop entries where either axis is Low, unless the source is a trusted tool (`--circrna_trusted_tools`, default CIRI-long/IsoCirc/CircFL-seq) | ≥ Medium on both, or Low from a trusted tool |
-| `high_confidence` | `consensus_hybrid` | `high_only_isocirc` | Keep only entries where both axes are High, unless Low and the source is IsoCirc | High on both, or Low from IsoCirc |
+| `balanced` | `consensus_hybrid` | `trusted_only` | Drop entries where either axis is Low, unless the source is a trusted tool (`--circrna_trusted_tools`, default CIRI-long/IsoCirc/CircFL-seq) | ≥ Medium on both, or Low from a trusted tool |
+| `high_confidence` | `consensus_hybrid` | `isocirc_only` | Drop entries where either axis is Low, unless the source is IsoCirc | ≥ Medium on both, or Low from IsoCirc |
 
-If `--run_quantify true` is set, `discovery`/`balanced_recall`/`high_confidence` get a further post-quantification confidence filter on top of this table, see [Quantification](#quantification) below. It does not run on `balanced_precision`: its Low-from-IsoCirc entries pass as-is, favoring recall, whereas `high_confidence` additionally requires read support there since that tier prioritizes precision over recall.
+If `--run_quantify true` is set, all three tiers get a further post-quantification confidence filter on top of this table, see [Quantification](#quantification) below. On `discovery`/`balanced` this drops loci where CircNick-LRS is the only supporting tool and read support is weak; on `high_confidence` it instead drops loci where IsoCirc is the only supporting tool and read support is weak, guarding the "Low from IsoCirc" exception opened by `isocirc_only` above.
 
 ### Why we chose vote-based merging and not simple union/intersection approaches? 
 
@@ -115,30 +125,28 @@ A natural alternative to nanocirc's tiers is to just deduplicate each tool's raw
 
 | | Human | Mouse |
 | --- | --- | --- |
-| Naive union (any 1 of 4 tools, deduplicated) | P 0.546 / R 0.381 / F1 0.449 | P 0.602 / R 0.527 / F1 0.562 |
-| `discovery` | P 0.577 / R 0.392 / F1 0.467 | P 0.665 / R 0.556 / F1 0.606 |
+| Naive union (any 1 of 4 tools, deduplicated) | P 0.496 / R 0.339 / F1 0.402 | P 0.537 / R 0.467 / F1 0.500 |
+| `discovery` | P 0.676 / R 0.369 / F1 0.477 | P 0.671 / R 0.493 / F1 0.569 |
 
-**Precision: intersection vs `balanced_precision`/`high_confidence`**
-
-| | Human | Mouse |
-| --- | --- | --- |
-| Naive 3-of-4 intersection | P 0.892 / R 0.107 / F1 0.192 | P 0.980 / R 0.159 / F1 0.274 |
-| `balanced_precision` | P 0.850 / R 0.202 / F1 0.327 | P 0.942 / R 0.361 / F1 0.522 |
-| Naive 4-of-4 intersection | P 0.911 / R 0.050 / F1 0.095 | P 0.997 / R 0.086 / F1 0.158 |
-| `high_confidence` | P 0.910 / R 0.095 / F1 0.171 | P 0.986 / R 0.196 / F1 0.328 |
-
-**F1: 2-of-4 intersection vs `balanced_recall`**
+**Precision: intersection vs `high_confidence`**
 
 | | Human | Mouse |
 | --- | --- | --- |
-| Naive 2-of-4 intersection | P 0.827 / R 0.186 / F1 0.304 | P 0.910 / R 0.285 / F1 0.434 |
-| `balanced_recall` | P 0.740 / R 0.360 / F1 0.484 | P 0.849 / R 0.522 / F1 0.646 |
+| Naive 3-of-4 intersection | P 0.729 / R 0.089 / F1 0.159 | P 0.814 / R 0.137 / F1 0.234 |
+| `high_confidence` | P 0.856 / R 0.196 / F1 0.319 | P 0.900 / R 0.287 / F1 0.435 |
 
-At every matched threshold, nanocirc's tier has higher recall and higher F1 than the basic operation count, in both species. nanocirc's tiers separate the BSJ-agreement decision from the structure-agreement decision (a locus can qualify without every supporting tool agreeing on the exact exon structure) and recover a tool's own additional correctly-resolved isoforms at the winning BSJ (see [multi-isoform recovery](#default-merge-mode-consensus_hybrid) above). That is the main reason nanocirc's consensus has a better precision/recall balance than simple set operations on the same 4 tools' raw calls.
+**F1: 2-of-4 intersection vs `balanced`**
+
+| | Human | Mouse |
+| --- | --- | --- |
+| Naive 2-of-4 intersection | P 0.720 / R 0.178 / F1 0.286 | P 0.798 / R 0.265 / F1 0.398 |
+| `balanced` | P 0.765 / R 0.358 / F1 0.488 | P 0.790 / R 0.483 / F1 0.600 |
+
+At every matched threshold, nanocirc's tier has higher recall and higher F1 than the basic set operation, in both species, and higher precision too except on mouse's 2-of-4-vs-`balanced` pair, where the naive intersection is marginally ahead (0.798 vs 0.790). One caller row can only claim one ground-truth entry: several tools independently calling near-identical structures at the same locus do not inflate a naive union or intersection's true positives, they compete for the same GT entry instead, and the losers count as false positives. This is why naive precision here is lower than a simple tool-agreement count would suggest. nanocirc's tiers separate the BSJ-agreement decision from the structure-agreement decision (a locus can qualify without every supporting tool agreeing on the exact exon structure) and recover a tool's own additional correctly-resolved isoforms at the winning BSJ (see [multi-isoform recovery](#default-merge-mode-consensus_hybrid) above). That is the main reason nanocirc's consensus has a better precision/recall balance than simple set operations on the same 4 tools' raw calls.
 
 ## Cross-run merge
 
-When `--run_crossrun_merge true` is set and the samplesheet has a `group` column, all samples sharing a group are merged after per-sample analysis. Cross-run merge runs once per tier: each tier's crossrun input is that tier's own already-filtered per-sample output (e.g. `balanced_recall`'s crossrun merge starts from every run's own `trusted_only`-filtered `balanced_recall` catalog, not from `discovery`). Each run is then treated as an independent caller within that tier, using the same `consensus_hybrid` vote and confidence scoring used across tools within one sample, treating samples as tools.
+When `--run_crossrun_merge true` is set and the samplesheet has a `group` column, all samples sharing a group are merged after per-sample analysis. Cross-run merge runs once per tier: each tier's crossrun input is that tier's own already-filtered per-sample output (e.g. `balanced`'s crossrun merge starts from every run's own `trusted_only`-filtered `balanced` catalog, not from `discovery`). Each run is then treated as an independent caller within that tier, using the same `consensus_hybrid` vote and confidence scoring used across tools within one sample, treating samples as tools.
 
 Each candidate locus is scored with two separate votes, run independently:
 
@@ -152,18 +160,16 @@ A structure seen in only 1 run is dropped from the structure vote unless that ru
 | Tier | What it takes to be retained |
 | ----- | ------------------------------ |
 | `discovery` | Detected by at least 1 tool in at least 1 run. Maximum sensitivity. |
-| `balanced_precision` | Multiple tools agreed within a run (or a Low-confidence IsoCirc-only call), and multiple runs support it. |
-| `balanced_recall` | Same run-count threshold as `balanced_precision`; built from each run's own `trusted_only`-filtered `balanced_recall` catalog, so it allows per-sample tier's Low-confidence calls from trusted tools that `balanced_precision`'s per-sample `isocirc_only` filter would drop. |
-| `high_confidence` | Built from each run's own `high_only_isocirc`-filtered `high_confidence` catalog (most/all tools agreed within each run), and most/all runs support it. Maximum precision. |
+| `balanced` | Built from each run's own `trusted_only`-filtered `balanced` catalog (multiple tools agreed within a run, or a Low-confidence call from a trusted tool), and multiple runs support it. |
+| `high_confidence` | Built from each run's own `isocirc_only`-filtered `high_confidence` catalog (multiple tools agreed within a run, or a Low-confidence IsoCirc-only call), and multiple runs support it. |
 
 **Count thresholds**, where `n` is the number of runs in the group, verified against `circrna_crossrun_merge.nf`:
 
 | Tier | Minimum runs required |
 | ----- | ------------------------ |
 | `discovery` | ≥ 1 (all circRNAs retained) |
-| `balanced_precision` | ≥ max(2, ceil(0.25 × n)) |
-| `balanced_recall` | ≥ max(2, ceil(0.25 × n)) |
-| `high_confidence` | ≥ ceil(0.75 × n) |
+| `balanced` | ≥ max(2, ceil(0.25 × n)) |
+| `high_confidence` | ≥ max(2, ceil(0.25 × n)) |
 
 ## Quantification
 
@@ -179,11 +185,10 @@ When `--run_quantify true` is set, each sample's reads are remapped against synt
 
 ### Post-quantification confidence filter
 
-After quantification, `discovery`/`balanced_recall`/`high_confidence` get an additional filter based on the quantified read count (`--circrna_confident_min_reads`, default `2`):
+After quantification, `discovery`/`balanced`/`high_confidence` each get an additional filter based on the quantified read count (`--circrna_confident_min_reads`, default `2`):
 
-- `discovery`/`balanced_recall`: drops loci only CircNick-LRS called (`supporting_tools` is just `circnick`) with a read count at or below the threshold.
-- `high_confidence`: drops IsoCirc-only calls (its merge-time `high_only_isocirc` exception) at or below the same threshold, since this tier favors precision over recall.
-- `balanced_precision` is not filtered this way: its IsoCirc-only entries (same merge-time exception) pass through unconditionally, since this tier favors recall.
+- `discovery`/`balanced`: drops loci where CircNick-LRS is the only supporting tool (`supporting_tools` is just `circnick`) and the read count is at or below the threshold.
+- `high_confidence`: drops loci where IsoCirc is the only supporting tool (`supporting_tools` is just `isocirc`) and the read count is at or below the threshold, guarding the merge-time `isocirc_only` exception that let that Low-confidence, single-tool call into this tier in the first place.
 
 ## circRNA type classification
 

@@ -19,6 +19,7 @@ process FILTER_CONFIDENT_DISCOVERY {
     task.ext.when == null || task.ext.when
 
     script:
+    // cache_bust: filter_confident_discovery.py balanced_recall renamed to balanced, 2026-08-24
     """
     filter_confident_discovery.py \\
         --tsv       ${clean_with_counts_tsv} \\

@@ -18,6 +18,7 @@ process CIRCRNA_CONFIDENCE_FILTER {
     task.ext.when == null || task.ext.when
 
     script:
+    // cache_bust: filter_confidence.py high_only_isocirc mode removed (high_confidence tier now isocirc_only), 2026-08-24
     def prefix  = task.ext.prefix ?: "${meta.id}_${meta.category}"
     def mode    = task.ext.args   ?: 'no_low'
     """

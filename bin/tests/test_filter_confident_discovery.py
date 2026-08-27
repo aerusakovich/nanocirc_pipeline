@@ -24,9 +24,9 @@ def test_drop_circnick_only_low_read_in_discovery():
     assert fcd.should_drop(row, min_reads=2, category='discovery') is True
 
 
-def test_drop_circnick_only_low_read_in_balanced_recall():
+def test_drop_circnick_only_low_read_in_balanced():
     row = {'supporting_tools': 'circnick', 'nanocirc_quant_reads': '1'}
-    assert fcd.should_drop(row, min_reads=2, category='balanced_recall') is True
+    assert fcd.should_drop(row, min_reads=2, category='balanced') is True
 
 
 def test_keep_circnick_only_with_enough_reads():
@@ -39,9 +39,8 @@ def test_keep_circnick_corroborated_by_another_tool_even_with_zero_reads():
     assert fcd.should_drop(row, min_reads=2, category='discovery') is False
 
 
-def test_circnick_only_rule_does_not_apply_outside_discovery_and_balanced_recall():
+def test_circnick_only_rule_does_not_apply_outside_discovery_and_balanced():
     row = {'supporting_tools': 'circnick', 'nanocirc_quant_reads': '0'}
-    assert fcd.should_drop(row, min_reads=2, category='balanced_precision') is False
     assert fcd.should_drop(row, min_reads=2, category='high_confidence') is False
     assert fcd.should_drop(row, min_reads=2, category='') is False
 
@@ -54,7 +53,7 @@ def test_drop_isocirc_only_low_read_in_high_confidence():
 def test_isocirc_only_rule_does_not_apply_outside_high_confidence():
     row = {'supporting_tools': 'isocirc', 'nanocirc_quant_reads': '0'}
     assert fcd.should_drop(row, min_reads=2, category='discovery') is False
-    assert fcd.should_drop(row, min_reads=2, category='balanced_recall') is False
+    assert fcd.should_drop(row, min_reads=2, category='balanced') is False
 
 
 def test_never_drop_when_read_support_is_strong():

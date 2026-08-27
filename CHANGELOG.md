@@ -3,6 +3,23 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.0 - 2026-08-24
+
+### `Changed`
+
+- Promoted the `balanced_precision` tier to `high_confidence`, replacing the previous `high_confidence` tier (the stricter `high_only_isocirc` filter). Rescored across all 3 wet-lab protocols (ciri_long/circfl/isocirc) post the ambiguous-vs-ambiguous strand-collision fix: the old `high_confidence` never beat `balanced_precision`'s precision by a noticeable margin (0.856 vs 0.869 on ciri_long, balanced_precision higher; 0.879 vs 0.860 on circfl, only +1.9pt) while giving up roughly 3-4x the recall (e.g. ciri_long 0.073 vs 0.264). `balanced_precision`'s underlying filter logic (`isocirc_only` mode in `bin/filter_confidence.py`) is unchanged, only republished under the `high_confidence` name; the old `high_only_isocirc` filter mode is removed from `bin/filter_confidence.py` entirely (was exclusive to the retired tier).
+- Renamed `balanced_recall` to `balanced`, now that there is no longer a `balanced_precision` counterpart to disambiguate it from.
+- Pipeline output is now 3 confidence tiers (`discovery`, `balanced`, `high_confidence`) instead of 4. The cross-run merge consensus-count formula (`modules/local/circrna_crossrun_merge.nf`) previously gave the old `high_confidence` tier a stricter `ceil(0.75*n)` threshold; `high_confidence` now shares `balanced`'s `max(2, ceil(0.25*n))` formula, since it carries `balanced_precision`'s logic forward.
+
+### `Fixed`
+
+- `bin/smart_merge.py` resolved each merged entry's strand by splice motif only *after* `group_relaxed()` had already grouped raw records, and `group_relaxed()` refuses to group two records at the same coordinates if they carry different real (`+`/`-`) strands. Two tools calling the identical structure on opposite strands were therefore split into two separate groups before the motif check ever ran, even when the motif conclusively resolved both to the same true strand: confirmed on real data (`ciri_long_run1` `chr10:46580893-46581036`, cirilong `+` vs circnick `.`) where this silently halved combined support across two weaker entries (`bsj_confidence=1` each) instead of combining it into one (`bsj_confidence=2`). Fixed by resolving each raw record's strand by motif before grouping, so `group_relaxed()` sees motif-corrected strands; a group now only stays split when two records' own independent motif evidence disagrees (a real antisense pair).
+- `bin/smart_merge.py`'s collision fallback (two entries independently landing on the same final `(chrom, start, end, strand)`) always renamed the losing entry's `bsj_id` suffix to a generic `dup{N}`, even when that entry already had a real isoform label (`iso1`, `iso2`, ...) from multi-isoform recovery -- the far more common case in practice, confirmed on real data (`ciri_long_run1` `chr1:92102472-92108001`, 4 distinct isoform structures at one BSJ, the 3rd and 4th losing their `iso2`/`iso3` labels to `dup2`/`dup3`). Cosmetic only (`bsj_confidence`/tool-presence flags are computed once per group and already shared correctly across every isoform row regardless of suffix), but fixed by preferring the entry's real isoform label when that specific `(coords, strand, label)` combination is itself still free, falling back to `dup{N}` only when even that collides too (a genuine cross-group clash).
+
+### `Deprecated`
+
+- The `high_only_isocirc` filter mode (`bin/filter_confidence.py`) and the confidence tier it powered are removed.
+
 ## v1.0.0 - 2026-08-12
 
 Initial release of nanocirc, created with the [nf-core](https://nf-co.re/) template.

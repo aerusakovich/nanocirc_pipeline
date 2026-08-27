@@ -332,3 +332,271 @@ def test_main_writes_all_empty_outputs_when_no_tool_has_calls(tmp_path, monkeypa
         path = outdir / f'testsample{suffix}'
         assert path.exists(), f'missing {path}'
         assert path.stat().st_size == 0
+
+
+# ── splice-motif strand check ────────────────────────────────────────────────
+
+def make_fasta(tmp_path, chroms):
+    """chroms: {name: sequence}. Writes name.fa (one line per record) + its
+    .fai, returns the .fa path. Mutating positions in `sequence` via slicing
+    (a mutable bytearray/list would help, but plain string concatenation of
+    short fixture sequences is simpler to read in each test)."""
+    fasta_path = tmp_path / 'genome.fa'
+    fai_lines = []
+    offset = 0
+    with open(fasta_path, 'w') as fh:
+        for name, seq in chroms.items():
+            header = f'>{name}\n'
+            fh.write(header)
+            offset += len(header)
+            fai_lines.append(f'{name}\t{len(seq)}\t{offset}\t{len(seq)}\t{len(seq) + 1}')
+            fh.write(seq + '\n')
+            offset += len(seq) + 1
+    with open(str(fasta_path) + '.fai', 'w') as fh:
+        fh.write('\n'.join(fai_lines) + '\n')
+    return str(fasta_path)
+
+
+def seq_with(length, positions):
+    """A length-N sequence of 'N' with positions {offset: 2-char string}
+    overlaid at those 0-based offsets."""
+    chars = ['N'] * length
+    for pos, s in positions.items():
+        chars[pos] = s[0]
+        chars[pos + 1] = s[1]
+    return ''.join(chars)
+
+
+def test_resolve_strand_by_motif_unresolved_by_tool(tmp_path):
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {8: 'AG', 60: 'GT'})})
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(fa, 'chr1', 10, 60, '.', '50,', '0,')
+    assert strand == '.'
+    assert status == 'unresolved_by_tool'
+
+
+def test_resolve_strand_by_motif_single_exon_confirmed(tmp_path):
+    # outer BSJ only (single exon): acceptor just before start, donor just after end
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {8: 'AG', 60: 'GT'})})
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(fa, 'chr1', 10, 60, '+', '50,', '0,')
+    assert (strand, status) == ('+', 'confirmed')
+
+
+def test_resolve_strand_by_motif_single_exon_never_hard_flips(tmp_path):
+    # motif is a clean, unambiguous MINUS signal, but the call is single-exon
+    # ('+' called): must downgrade to ambiguous, never flip on 1 junction alone.
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {8: 'AC', 60: 'CT'})})
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(fa, 'chr1', 10, 60, '+', '50,', '0,')
+    assert (strand, status) == ('.', 'ambiguous')
+
+
+def test_resolve_strand_by_motif_single_exon_ambiguous_no_signal(tmp_path):
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {})})  # all 'N', no motif either way
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(fa, 'chr1', 10, 60, '+', '50,', '0,')
+    assert (strand, status) == ('.', 'ambiguous')
+
+
+def test_resolve_strand_by_motif_multi_exon_confirmed(tmp_path):
+    # start=10, end=60, exons [10,20) and [50,60), internal intron (20,50).
+    # outer: acceptor@8, donor@60. internal: donor@20, acceptor@48.
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {
+        8: 'AG', 60: 'GT',    # outer BSJ, '+'
+        20: 'GT', 48: 'AG',   # internal junction, '+'
+    })})
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(
+        fa, 'chr1', 10, 60, '+', '10,10,', '0,40,')
+    assert (strand, status) == ('+', 'confirmed')
+
+
+def test_resolve_strand_by_motif_multi_exon_flips_on_unanimous_disagreement(tmp_path):
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {
+        8: 'AC', 60: 'CT',    # outer BSJ, '-'
+        20: 'CT', 48: 'AC',   # internal junction, '-'
+    })})
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(
+        fa, 'chr1', 10, 60, '+', '10,10,', '0,40,')
+    assert (strand, status) == ('-', 'flipped')
+
+
+def test_write_outputs_never_emits_duplicate_bsj_id_from_cross_group_flip(tmp_path):
+    # write_outputs()'s own defensive fallback for groups that arrive
+    # already split by conflicting strand (main() now pre-resolves each
+    # record's strand by motif before grouping, so this specific circfl/
+    # circnick shape no longer reaches write_outputs split in two via the
+    # real main() path -- see test_main_merges_opposite_strand_tools_calling_
+    # identical_structure below for that combined outcome). This test calls
+    # write_outputs directly with pre-built groups, covering any other
+    # caller (or a genuine antisense pair, where the two records' OWN
+    # motif evidence disagrees and group_relaxed is right to keep them
+    # apart) that can still reach write_outputs in this shape: if both
+    # groups converge on the same final strand, they'd collide on the exact
+    # same bsj_id -- which broke a downstream script's
+    # catalog.set_index('bsj_id') uniqueness assumption on real human data.
+    # circfl: single-exon '+' call, motif confirms '+'.
+    # circnick: multi-exon '-' call at the SAME coordinates (kept as its own
+    # group since '+' vs '-' never merge), whose own junctions unanimously
+    # support '+' instead -- eligible to flip since it has 2+ junctions.
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {
+        8: 'AG', 60: 'GT',    # outer BSJ (shared coords), '+'
+        20: 'GT', 48: 'AG',   # circnick's internal junction, also '+'
+    })})
+
+    circfl_rec = rec(tool='circfl', chrom='chr1', strand='+', start=10, end=60,
+                      block_count='1', block_sizes='50,', block_starts='0,')
+    circnick_rec = rec(tool='circnick', chrom='chr1', strand='-', start=10, end=60,
+                        block_count='2', block_sizes='10,10,', block_starts='0,40,')
+
+    groups = sm.group_relaxed([circfl_rec, circnick_rec], tolerance=5)
+    assert len(groups) == 2  # confirms they're still kept apart by group_relaxed itself
+
+    outdir = tmp_path / 'out'
+    sm.write_outputs(groups, ['circfl', 'circnick'], 'testsample', str(outdir),
+                      struct_tolerance=5, fasta=fasta)
+
+    bed_lines = (outdir / 'testsample_smart_consensus_hybrid.bed12').read_text().strip().split('\n')
+    names = [line.split('\t')[3] for line in bed_lines]
+    assert len(names) == len(set(names)), f'duplicate bsj_id in output: {names}'
+
+    strands = sorted(line.split('\t')[5] for line in bed_lines)
+    assert strands == ['+', '.'], (
+        "circfl keeps its confirmed '+'; circnick's flip to the same '+' "
+        "must be refused and downgraded to '.' instead of colliding"
+    )
+
+
+def test_write_outputs_disambiguates_two_groups_both_landing_on_ambiguous(tmp_path):
+    # Real crash on mouse species benchmark data: two separate groups
+    # (again kept apart by group_relaxed since they conflict on strand)
+    # each independently resolve to '.' (no clean single-exon signal either
+    # way, not a flip). Downgrading a flip to '.' isn't enough here since
+    # NEITHER side ever had a confident strand to begin with -- both want
+    # '.' from the start. Falls back to a disambiguating suffix.
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {})})  # all 'N': no motif signal at all
+
+    circfl_rec = rec(tool='circfl', chrom='chr1', strand='+', start=10, end=60,
+                      block_count='1', block_sizes='50,', block_starts='0,')
+    circnick_rec = rec(tool='circnick', chrom='chr1', strand='-', start=10, end=60,
+                        block_count='1', block_sizes='50,', block_starts='0,')
+
+    groups = sm.group_relaxed([circfl_rec, circnick_rec], tolerance=5)
+    assert len(groups) == 2
+
+    outdir = tmp_path / 'out'
+    sm.write_outputs(groups, ['circfl', 'circnick'], 'testsample', str(outdir),
+                      struct_tolerance=5, fasta=fasta)
+
+    bed_lines = (outdir / 'testsample_smart_consensus_hybrid.bed12').read_text().strip().split('\n')
+    names = [line.split('\t')[3] for line in bed_lines]
+    assert len(names) == len(set(names)), f'duplicate bsj_id in output: {names}'
+    assert sorted(line.split('\t')[5] for line in bed_lines) == ['.', '.']
+
+
+def test_resolve_strand_by_motif_multi_exon_mixed_signal_stays_ambiguous(tmp_path):
+    # outer junction supports '+', internal junction supports '-': mixed,
+    # never a hard flip on a non-unanimous signal.
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {
+        8: 'AG', 60: 'GT',    # outer BSJ, '+'
+        20: 'CT', 48: 'AC',   # internal junction, '-'
+    })})
+    fa = sm.FastaRandomAccess(fasta)
+    strand, status = sm.resolve_strand_by_motif(
+        fa, 'chr1', 10, 60, '+', '10,10,', '0,40,')
+    assert (strand, status) == ('.', 'ambiguous')
+
+
+def write_bed12(path, records):
+    with open(path, 'w') as fh:
+        for r in records:
+            fh.write('\t'.join([
+                r['chrom'], str(r['start']), str(r['end']), r.get('name', 'x'),
+                r.get('score', '0'), r['strand'], str(r['start']), str(r['start']),
+                '0', r['block_count'], r['block_sizes'], r['block_starts'],
+            ]) + '\n')
+
+
+def test_main_merges_opposite_strand_tools_calling_identical_structure(tmp_path, monkeypatch):
+    # End-to-end reproduction of a real gap found on ciri_long_run1
+    # (chr10:46580893-46581036: cirilong called '+', circnick called the
+    # identical structure '.', each ending up with bsj_confidence=1 instead
+    # of a combined 2). Two tools call the exact same single-exon structure
+    # on opposite strands; the motif unambiguously supports '+'. Pre-
+    # resolving each raw record's strand before grouping (main()) should
+    # let group_relaxed see them as strand-compatible and combine them into
+    # one entry, instead of splitting into two weaker ones.
+    fasta = make_fasta(tmp_path, {'chr1': seq_with(70, {8: 'AG', 60: 'GT'})})
+
+    write_bed12(tmp_path / 'toolA.bed12', [dict(
+        chrom='chr1', start=10, end=60, strand='+',
+        block_count='1', block_sizes='50,', block_starts='0,', score='10')])
+    write_bed12(tmp_path / 'toolB.bed12', [dict(
+        chrom='chr1', start=10, end=60, strand='-',
+        block_count='1', block_sizes='50,', block_starts='0,', score='8')])
+
+    outdir = tmp_path / 'out'
+    monkeypatch.setattr('sys.argv', [
+        'smart_merge.py',
+        '--sample', 'testsample',
+        '--tool_names', 'toolA', 'toolB',
+        '--bed_files', str(tmp_path / 'toolA.bed12'), str(tmp_path / 'toolB.bed12'),
+        '--tolerance', '5', '--struct_tolerance', '5', '--n_active', '2',
+        '--fasta', fasta,
+        '--outdir', str(outdir),
+    ])
+    sm.main()
+
+    bed_lines = (outdir / 'testsample_smart_consensus_hybrid.bed12').read_text().strip().split('\n')
+    assert len(bed_lines) == 1, f'expected one merged entry, got: {bed_lines}'
+    assert bed_lines[0].split('\t')[5] == '+'
+
+    tsv_path = outdir / 'testsample_smart_consensus_hybrid_confidence.tsv'
+    header, row = tsv_path.read_text().strip().split('\n')
+    cols = dict(zip(header.lstrip('#').split('\t'), row.split('\t')))
+    assert cols['bsj_confidence'] == '2'
+    assert cols['toolA'] == '1' and cols['toolB'] == '1'
+    assert cols['strand_status'] == 'confirmed'
+
+
+def test_write_outputs_preserves_isoform_label_over_generic_dup_suffix(tmp_path):
+    # Real case (ciri_long_run1 chr1:92102472-92108001): a BSJ with 3+
+    # distinct isoform structures from multi-isoform recovery. Without a
+    # motif check to distinguish them, every isoform's resolved_strand stays
+    # identical to the group's raw strand, so the 2nd+ isoform always
+    # collides with an earlier one at the exact same (coords, strand). The
+    # collision must not erase iso2's real isoform_label by falling back to
+    # a generic 'dup2' -- group-level bsj_confidence/tool flags are already
+    # shared correctly across every isoform row; only the bsj_id suffix was
+    # ever wrong.
+    isocirc_recs = [
+        rec(tool='isocirc', chrom='chr1', strand='+', start=10, end=60, score='30',
+            block_count='2', block_sizes='20,20,', block_starts='0,30,'),
+        rec(tool='isocirc', chrom='chr1', strand='+', start=10, end=60, score='20',
+            block_count='2', block_sizes='15,15,', block_starts='0,35,'),
+        rec(tool='isocirc', chrom='chr1', strand='+', start=10, end=60, score='10',
+            block_count='2', block_sizes='10,10,', block_starts='0,40,'),
+    ]
+
+    groups = sm.group_relaxed(isocirc_recs, tolerance=5)
+    assert len(groups) == 1
+
+    outdir = tmp_path / 'out'
+    sm.write_outputs(groups, ['isocirc'], 'testsample', str(outdir), struct_tolerance=5)
+
+    tsv_lines = (outdir / 'testsample_smart_consensus_hybrid_confidence.tsv').read_text().strip().split('\n')
+    header = tsv_lines[0].lstrip('#').split('\t')
+    rows = [dict(zip(header, line.split('\t'))) for line in tsv_lines[1:]]
+
+    labels = sorted(r['isoform_label'] for r in rows)
+    assert labels == ['iso1', 'iso2', 'main']
+
+    suffixes = sorted(r['bsj_id'].split('|')[-1] if '|' in r['bsj_id'] else 'main' for r in rows)
+    assert suffixes == ['iso1', 'iso2', 'main'], f'dup{{N}} fallback used instead of real isoform label: {suffixes}'
+
+    # Group-level support (1 supporting tool, isocirc) is identical across
+    # all 3 isoform rows either way -- the collision never fragmented it.
+    assert {r['bsj_confidence'] for r in rows} == {'1'}
+    assert {r['isocirc'] for r in rows} == {'1'}
