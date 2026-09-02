@@ -142,10 +142,12 @@ def read_overlapping_pairs(path, tool_a, tool_b, min_overlap):
         overlapping_a  : set of bsj_keys from tool_a passing threshold
         overlapping_b  : set of bsj_keys from tool_b passing threshold
         fractions      : { (key_a, key_b): (frac_a, frac_b) } for ALL pairs
+        n_skipped      : number of malformed lines skipped
     """
     overlapping_a = set()
     overlapping_b = set()
     fractions     = {}
+    n_skipped     = 0
 
     if not os.path.isfile(path):
         print_error("Pairwise file not found.", context="Path", context_str=path)
@@ -158,10 +160,18 @@ def read_overlapping_pairs(path, tool_a, tool_b, min_overlap):
 
             cols = line.split("\t")
             if len(cols) < 25:
-                print_error(
-                    "Expected 25 columns, got {}".format(len(cols)),
-                    context="{}_vs_{} line".format(tool_a, tool_b),
-                    context_str=str(lineno))
+                # bedtools intersect -wo has been observed to silently
+                # truncate its own output line for pathologically large BED12
+                # records (e.g. a call with a very high block count), merging
+                # a trailing field with the overlap column and dropping the
+                # separator. Skip the line rather than aborting the whole
+                # run: one lost pair does not invalidate the rest of the file.
+                n_skipped += 1
+                sys.stderr.write(
+                    "WARNING {}_vs_{} line {}: expected 25 columns, got {} "
+                    "(malformed bedtools -wo output) -> skipped\n".format(
+                        tool_a, tool_b, lineno, len(cols)))
+                continue
 
             key_a = make_bsj_key(cols[0],  cols[1],  cols[2],  cols[5])
             key_b = make_bsj_key(cols[12], cols[13], cols[14], cols[17])
@@ -186,7 +196,7 @@ def read_overlapping_pairs(path, tool_a, tool_b, min_overlap):
                 overlapping_a.add(key_a)
                 overlapping_b.add(key_b)
 
-    return overlapping_a, overlapping_b, fractions
+    return overlapping_a, overlapping_b, fractions, n_skipped
 
 
 def compute_scores(bsj_id, bsj_confidence, tool_flags, all_pair_results, n_active,
@@ -288,13 +298,14 @@ def main():
 
     for pair_file in args.pairs:
         tool_a, tool_b = parse_tool_names(pair_file)
-        overlapping_a, overlapping_b, fractions = read_overlapping_pairs(
+        overlapping_a, overlapping_b, fractions, n_skipped = read_overlapping_pairs(
             pair_file, tool_a, tool_b, args.min_overlap)
         all_pair_results[(tool_a, tool_b)] = (overlapping_a, overlapping_b, fractions)
         pair_order.append((tool_a, tool_b))
-        print("Loaded {}_vs_{}: {} passing keys in {}, {} in {} (threshold={})".format(
+        skipped_note = " ({} malformed lines skipped)".format(n_skipped) if n_skipped else ""
+        print("Loaded {}_vs_{}: {} passing keys in {}, {} in {} (threshold={}){}".format(
             tool_a, tool_b, len(overlapping_a), tool_a,
-            len(overlapping_b), tool_b, args.min_overlap))
+            len(overlapping_b), tool_b, args.min_overlap, skipped_note))
 
     out_lines = []
 

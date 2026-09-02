@@ -11,6 +11,7 @@ process CIRCNICK_LIFTOVER {
     tuple val(meta2), path(exon_usage)   // circ_circRNA_exon_usage_length_of_exons.txt
     tuple val(meta3), path(intron_cov)   // intronCov.bed, also needs liftover
     path  chain                          // liftOver chain file (.chain or .chain.gz)
+    path  fai                            // target genome .fai, rejects lifted coords past chrom end
 
     output:
     tuple val(meta), path("${meta.id}_lifted_annotated.txt"),  emit: annotated
@@ -34,6 +35,7 @@ process CIRCNICK_LIFTOVER {
     liftover_bed.py \\
         annotated_for_lift.bed \\
         ${chain} \\
+        ${fai} \\
         annotated_lifted.bed \\
         annotated_unmapped.bed
 
@@ -51,6 +53,7 @@ process CIRCNICK_LIFTOVER {
     liftover_bed.py \\
         exon_for_lift.bed \\
         ${chain} \\
+        ${fai} \\
         exon_lifted.bed \\
         exon_unmapped.bed
 
@@ -63,6 +66,7 @@ process CIRCNICK_LIFTOVER {
     liftover_bed.py \\
         intron_for_lift.bed \\
         ${chain} \\
+        ${fai} \\
         intron_lifted.bed \\
         intron_unmapped.bed
 

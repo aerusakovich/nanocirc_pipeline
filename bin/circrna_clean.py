@@ -8,7 +8,7 @@ Produces a clean, wet-lab-friendly TSV from an annotated circRNA confidence TSV
 Adds three columns that are not in the annotated TSV:
   type              : eciRNA | EIciRNA | ciRNA | antisense | intergenic
                       (bedtools intersect against gene/exon BED files derived from GTF)
-  expression        : read count, priority order isocirc, ciri-long, circfl, circnick
+  expression        : read count, priority order ciri-long, circfl, circnick, isocirc
   supporting_tools  : comma-joined tool names whose own presence flag (isocirc,
                       circfl, circnick, cirilong, already in the annotated TSV from
                       add_isoform_confidence.py) is set for this row
@@ -337,7 +337,7 @@ def main():
             row['type']             = types.get(bsj_id, '')
             row['supporting_reads'] = get_expression(
                 chrom, start, end, strand, args.bsj_tol,
-                iso_idx, ciri_idx, circfl_idx, nick_idx
+                ciri_idx, circfl_idx, nick_idx, iso_idx
             )
             row['supporting_tools'] = supporting_tools(row)
             writer.writerow(row)

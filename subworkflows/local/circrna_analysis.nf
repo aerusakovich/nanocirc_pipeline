@@ -107,7 +107,8 @@ workflow CIRCRNA_ANALYSIS {
                 CIRCNICK_LRS.out.annotated,
                 CIRCNICK_LRS.out.exon_usage,
                 CIRCNICK_LRS.out.intron_cov,
-                ch_chain.first()
+                ch_chain.first(),
+                fasta_fai
             )
             ch_versions = ch_versions.mix(CIRCNICK_LIFTOVER.out.versions.first())
 
