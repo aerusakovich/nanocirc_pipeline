@@ -144,6 +144,34 @@ If it finishes with `Pipeline completed successfully`, your installation is good
 
 **Realistic requirements for this first run:** without a config file (see step 6), everything runs locally on the one machine you launch it from, so provide **at least 16-32 GB of RAM** and **15-30 minutes for the very first run**, not the few minutes the chr21 data itself would take, since it also has to download every container image (a few GB total). Set `NXF_APPTAINER_CACHEDIR` (or `NXF_SINGULARITY_CACHEDIR`) to a persistent directory so that download happens once, not on every re-run.
 
+## 9. Full example: cross-run merge and quantification
+
+The command above runs a single sample, so it never touches cross-run
+merging. To also exercise that and quantification, using only the same
+bundled chr21 test data, write a 2-row samplesheet (two "runs" of the
+same group) and enable both flags:
+
+```bash
+cat > chr21_samplesheet.csv <<EOF
+sample,fastq,group
+chr21_smoke_a,assets/test_data/human_chr21/chr21_run1.fastq.gz,smoke
+chr21_smoke_b,assets/test_data/human_chr21/chr21_run1.fastq.gz,smoke
+EOF
+
+nextflow run aerusakovich/nanocirc_pipeline -profile test,singularity \
+    --input chr21_samplesheet.csv \
+    --run_crossrun_merge true \
+    --run_quantify true \
+    --outdir test_results/
+```
+
+This is exactly the command used to produce
+[`docs/example_output/`](example_output/), checked into this repo so you
+can browse real output (cross-run `_clean.tsv`/`.bed12` for all 3
+confidence tiers, per-sample quantified counts, DESeq2-ready matrices,
+MultiQC report, and the pipeline's own execution report) without running
+anything yourself first.
+
 ---
 
 For full parameter reference, see [docs/usage.md](usage.md). For what the pipeline produces, see [docs/output.md](output.md).

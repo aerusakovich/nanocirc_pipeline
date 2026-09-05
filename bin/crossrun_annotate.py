@@ -41,9 +41,9 @@ import subprocess
 from collections import defaultdict
 
 CLEAN_COLUMNS = [
-    '#chrom', 'start', 'end', 'strand',
+    '#chrom', 'start', 'end', 'strand', 'bsj_id',
     'sel_block_count', 'sel_block_sizes', 'sel_block_starts',
-    'bsj_id', 'bsj_confidence', 'isoform_confidence', 'n_samples',
+    'bsj_confidence', 'isoform_confidence', 'n_samples',
     'type', 'supporting_tools',
 ]
 

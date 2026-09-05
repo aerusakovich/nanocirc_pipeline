@@ -820,8 +820,12 @@ def collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance):
     collect_entries_consensus_hybrid, from one best_record() per tool.
 
     Then, for every tool in MULTI_ISO_TOOLS, any of its other calls at the
-    winning BSJ that don't already match an existing entry within
-    struct_tolerance get appended as their own isoform entry.
+    winning BSJ get either folded into an existing entry (main, a minority
+    structure, or an isoform already recovered by this same pass) when its
+    structure is within struct_tolerance of one already collected, crediting
+    that tool as additional support the same way collect_entries_consensus_
+    hybrid's own BSJ-folding does; or, if genuinely distinct from every
+    entry seen so far, appended as its own new isoform entry.
 
     tool_map: {tool: [record, ...]}, the full un-collapsed per-tool record
     list for this relaxed-BSJ group (same shape write_outputs() already
@@ -832,8 +836,11 @@ def collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance):
 
     main_entry = entries[0]
     winning_bsj = (main_entry['start'], main_entry['end'])
-    existing_structs = [absolute_exon_coords(e['struct_rec']) for e in entries
-                         if (e['start'], e['end']) == winning_bsj]
+    # Parallel to existing_structs: which entry each structure belongs to,
+    # so a later matching call can fold its tool back onto it.
+    winning_bsj_idx = [i for i, e in enumerate(entries)
+                        if (e['start'], e['end']) == winning_bsj]
+    existing_structs = [absolute_exon_coords(entries[i]['struct_rec']) for i in winning_bsj_idx]
 
     iso_n = max((int(e['isoform_label'][3:]) for e in entries
                  if e['isoform_label'].startswith('iso')), default=0)
@@ -846,7 +853,13 @@ def collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance):
             if bsj_key(rec) != winning_bsj or rec is tool_best.get(tool):
                 continue
             abs_struct = absolute_exon_coords(rec)
-            if any(abs_struct_similar(abs_struct, es, struct_tolerance) for es in existing_structs):
+            match = next((k for k, es in enumerate(existing_structs)
+                          if abs_struct_similar(abs_struct, es, struct_tolerance)), None)
+            if match is not None:
+                target_entry = entries[winning_bsj_idx[match]]
+                if tool not in target_entry['isoform_tools']:
+                    target_entry['isoform_tools'].append(tool)
+                    target_entry['struct_agree'] = len(target_entry['isoform_tools'])
                 continue
             iso_n += 1
             entries.append({
@@ -861,6 +874,7 @@ def collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance):
                 'isoform_tools': [tool],
             })
             existing_structs.append(abs_struct)
+            winning_bsj_idx.append(len(entries) - 1)
 
     return entries
 

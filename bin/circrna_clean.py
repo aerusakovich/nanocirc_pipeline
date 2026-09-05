@@ -14,9 +14,9 @@ Adds three columns that are not in the annotated TSV:
                       add_isoform_confidence.py) is set for this row
 
 Clean TSV columns:
-  #chrom, start, end, strand,
+  #chrom, start, end, strand, bsj_id,
   sel_block_count, sel_block_sizes, sel_block_starts,
-  bsj_id, bsj_confidence, isoform_confidence,
+  bsj_confidence, isoform_confidence,
   class_code, ref_gene_id,
   type, expression, supporting_tools
 
@@ -46,9 +46,9 @@ import subprocess
 from collections import defaultdict
 
 CLEAN_COLUMNS = [
-    '#chrom', 'start', 'end', 'strand',
+    '#chrom', 'start', 'end', 'strand', 'bsj_id',
     'sel_block_count', 'sel_block_sizes', 'sel_block_starts',
-    'bsj_id', 'bsj_confidence', 'isoform_confidence',
+    'bsj_confidence', 'isoform_confidence',
     'class_code', 'ref_gene_id',
     'type',
     'supporting_reads',

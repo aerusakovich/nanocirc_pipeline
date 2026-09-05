@@ -12,6 +12,7 @@ include { CIRCRNA_QUANTIFY        } from '../subworkflows/local/circrna_quantify
 include { QUANT_APPEND_COUNTS     } from '../modules/local/quant_append_counts'
 include { CIRCRNA_CROSSRUN_MERGE  } from '../modules/local/circrna_crossrun_merge'
 include { FILTER_CONFIDENT_DISCOVERY } from '../modules/local/filter_confident_discovery'
+include { CROSSRUN_CONFIDENT_FILTER } from '../modules/local/crossrun_confident_filter'
 include { BUILD_DESEQ2_MATRIX     } from '../modules/local/build_deseq2_matrix'
 include { APPEND_RUN_COUNTS_MATRIX } from '../modules/local/append_run_counts_matrix'
 include { APPEND_RUN_COUNTS_MATRIX as APPEND_RUN_COUNTS_MATRIX_CROSSRUN } from '../modules/local/append_run_counts_matrix'
@@ -291,9 +292,34 @@ workflow NANOCIRC {
         APPEND_RUN_COUNTS_MATRIX ( ch_run_counts_input )
         ch_versions = ch_versions.mix(APPEND_RUN_COUNTS_MATRIX.out.versions.first())
 
-        // Same fill-out, for CIRCRNA_CROSSRUN_MERGE's own group-level clean.tsv.
+        // Same fill-out, for CIRCRNA_CROSSRUN_MERGE's own group-level clean.tsv,
+        // but first re-apply the same read-count guard FILTER_CONFIDENT_DISCOVERY
+        // applies per-sample: crossrun merging itself draws candidate loci from
+        // each run's confidence-label-filtered tier output, before quantified
+        // read counts exist, so a locus the per-sample read-count guard would
+        // drop can otherwise reach the published crossrun catalog with a
+        // silently zero-filled count instead of being absent, as it is in the
+        // per-sample tier it is meant to represent. A crossrun locus is kept
+        // here if it also survived FILTER_CONFIDENT_DISCOVERY in at least one
+        // of the group's own runs, the same any-one-run-supports-it logic the
+        // rest of crossrun merging already uses.
         if (runCrossrunMerge) {
-            def ch_crossrun_counts_input = CIRCRNA_CROSSRUN_MERGE.out.clean
+            def ch_run_filtered_by_group_tier = ch_final_clean_with_counts
+                .map { meta, tsv -> [meta.id, meta.category, tsv] }
+                .combine( ch_run_to_unit.map { meta, unit_id -> [meta.id, unit_id] }, by: 0 )
+                .map { _run_id, category, tsv, unit_id -> [[unit_id, category], tsv] }
+                .groupTuple(by: 0)
+
+            def ch_crossrun_confident_input = CIRCRNA_CROSSRUN_MERGE.out.clean
+                .join( CIRCRNA_CROSSRUN_MERGE.out.bed, by: 0 )
+                .map { meta, clean_tsv, bed -> [[meta.id, meta.tier], meta, clean_tsv, bed] }
+                .join( ch_run_filtered_by_group_tier, by: 0 )
+                .map { _key, meta, clean_tsv, bed, filtered_tsvs -> [meta, clean_tsv, bed, filtered_tsvs] }
+
+            CROSSRUN_CONFIDENT_FILTER ( ch_crossrun_confident_input )
+            ch_versions = ch_versions.mix(CROSSRUN_CONFIDENT_FILTER.out.versions.first())
+
+            def ch_crossrun_counts_input = CROSSRUN_CONFIDENT_FILTER.out.clean
                 .map { meta, tsv -> [meta.tier, meta, tsv] }
                 .combine( BUILD_DESEQ2_MATRIX.out.counts, by: 0 )
                 .map { _tier, meta, tsv, matrix -> [meta, tsv, matrix] }
