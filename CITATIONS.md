@@ -74,10 +74,6 @@ This pipeline's design and benchmark was motivated by our first benchmark study:
 
   > Li H. Minimap2: pairwise alignment for nucleotide sequences. Bioinformatics. 2018 Sep 15;34(18):3094-3100. doi: 10.1093/bioinformatics/bty191. PubMed PMID: 29750242; PubMed Central PMCID: PMC6137996.
 
-- [BLAT](https://pubmed.ncbi.nlm.nih.gov/11932250/)
-
-  > Kent WJ. BLAT--the BLAST-like alignment tool. Genome Res. 2002 Apr;12(4):656-64. doi: 10.1101/gr.229202. PubMed PMID: 11932250; PubMed Central PMCID: PMC187518.
-
 - [BWA](https://pubmed.ncbi.nlm.nih.gov/19451168/)
 
   > Li H, Durbin R. Fast and accurate short read alignment with Burrows-Wheeler transform. Bioinformatics. 2009 Jul 15;25(14):1754-60. doi: 10.1093/bioinformatics/btp324. PubMed PMID: 19451168; PubMed Central PMCID: PMC2705234.
