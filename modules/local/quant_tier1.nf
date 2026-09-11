@@ -18,6 +18,7 @@ process QUANT_TIER1 {
 
     script:
     """
+    # cache_bust: dropped pblat from quant_chunk_remap.py/quant_overlap_rescue.py, 2026-09-07
     quant_genome_align.py \\
         --genome_index ${genome_index} \\
         --reads ${fastq} \\

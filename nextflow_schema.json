@@ -209,6 +209,12 @@
                     "description": "Merge circRNA calls across samples that share the same 'group' value in the samplesheet. Requires the 'group' column to be present.",
                     "fa_icon": "fas fa-object-group"
                 },
+                "run_cross_group_reconcile": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Merge circRNA calls across every group's samples at once (not split by group) into one shared catalog, so all groups quantify against and publish the same isoform IDs. Requires run_crossrun_merge and a samplesheet with 2 or more groups.",
+                    "fa_icon": "fas fa-object-group"
+                },
                 "run_benchmark_modes": {
                     "type": "boolean",
                     "default": false,

@@ -17,23 +17,28 @@ read overlap despite being the same junction, without letting reads that
 never leave the shared sequence decide the split by total-span noise
 alone.
 
+minimap2-only (no pblat): validated on real ground truth (human_run1)
+that dropping pblat here costs nothing -- if anything, correlation with
+ground truth went up slightly, same result and same reason as
+quant_tier2_rescue.py (see there): classify_boundary_aware's diagnostic-
+region logic, not pblat, is what actually arbitrates ambiguous reads.
+
 Usage:
     quant_tier3_rescue.py \\
         --flagged_similarity sample1_flagged_loci_similarity.tsv \\
         --deduped_metadata   deduped_metadata.tsv \\
         --reads              sample1.fastq.gz \\
         --sample             sample1 \\
-        --minimap2 minimap2 --samtools samtools --pblat pblat --threads 16
+        --minimap2 minimap2 --samtools samtools --threads 16
 """
 import argparse
-import gzip
 from pathlib import Path
 from collections import defaultdict
 
 import pandas as pd
 
-from quant_common import (MIN_SEGMENT_MATCH, read_fasta, run_minimap2_bam, run_pblat,
-                           parse_bam_hits, parse_psl_hits, build_diagnostic_regions, classify_boundary_aware)
+from quant_common import (read_fasta, run_minimap2_bam,
+                           parse_bam_hits, build_diagnostic_regions, classify_boundary_aware)
 from quant_build_refs import build_circle_references
 
 
@@ -66,23 +71,8 @@ def parse_args():
     p.add_argument('--sample', required=True)
     p.add_argument('--minimap2', default='minimap2')
     p.add_argument('--samtools', default='samtools')
-    p.add_argument('--pblat', default='pblat')
     p.add_argument('--threads', type=int, default=16)
     return p.parse_args()
-
-
-def _fastq_to_fasta(reads_fq, out_fa):
-    opener = gzip.open if str(reads_fq).endswith(".gz") else open
-    with opener(reads_fq, "rt") as f, open(out_fa, "w") as out:
-        while True:
-            name = f.readline()
-            if not name:
-                break
-            seq = f.readline()
-            f.readline()
-            f.readline()
-            rid = name[1:].strip().split()[0]
-            out.write(f">{rid}\n{seq}")
 
 
 def _diagnostic_regions_by_cluster(ref_lengths: pd.DataFrame, ref_seqs: dict, clusters: dict) -> dict:
@@ -103,7 +93,7 @@ def _diagnostic_regions_by_cluster(ref_lengths: pd.DataFrame, ref_seqs: dict, cl
 
 
 def tier3_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFrame, genome_fasta,
-                  reads_fq: Path, sample: str, minimap2_bin, samtools_bin, pblat_bin, threads=16) -> pd.DataFrame:
+                  reads_fq: Path, sample: str, minimap2_bin, samtools_bin, threads=16) -> pd.DataFrame:
     gf = flagged_similarity[flagged_similarity["is_gene_family"]]
     if gf.empty:
         out = pd.DataFrame(columns=["bsj_id", "tier3_count"])
@@ -144,16 +134,11 @@ def tier3_rescue(flagged_similarity: pd.DataFrame, deduped_metadata: pd.DataFram
     bam_path = run_minimap2_bam(minimap2_bin, samtools_bin, ref_fa, reads_fq,
                                  workdir / f"{sample}.tier3.minimap2.bam", threads)
 
-    reads_fa = workdir / f"{sample}.reads.fa"
-    _fastq_to_fasta(reads_fq, reads_fa)
-    psl_path = run_pblat(pblat_bin, ref_fa, reads_fa, workdir / f"{sample}.tier3.psl", threads,
-                          min_score=MIN_SEGMENT_MATCH, min_identity=90)
-
     join_pos_by_ref = dict(zip(ref_lengths["safe_id"], ref_lengths["join_pos"]))
     safe_to_bsj = dict(zip(ref_lengths["safe_id"], ref_lengths["bsj_id"]))
     ref_seqs = read_fasta(ref_fa)
     diagnostic_regions = _diagnostic_regions_by_cluster(ref_lengths, ref_seqs, clusters)
-    support = classify_boundary_aware(parse_bam_hits(bam_path), parse_psl_hits(psl_path),
+    support = classify_boundary_aware(parse_bam_hits(bam_path), iter(()),
                                        join_pos_by_ref, diagnostic_regions)
 
     rows = [{"bsj_id": safe_to_bsj[ref], "tier3_count": support.get(ref, 0.0)}
@@ -170,7 +155,7 @@ def main():
     flagged_similarity = pd.read_csv(args.flagged_similarity, sep='\t')
     deduped_metadata = pd.read_csv(args.deduped_metadata, sep='\t')
     tier3_rescue(flagged_similarity, deduped_metadata, args.genome_fasta, Path(args.reads), args.sample,
-                 args.minimap2, args.samtools, args.pblat, args.threads)
+                 args.minimap2, args.samtools, args.threads)
 
 
 if __name__ == '__main__':

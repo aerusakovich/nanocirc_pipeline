@@ -13,11 +13,18 @@ benchmark reruns.
 
 For every locus cluster with more than 1 member: fetches candidate reads
 from the sample's genome-wide BAM restricted to the cluster's combined
-span (+/- FLANK bp), aligns with both minimap2 (--eqx, for CIGAR-based
-edit counting) and pblat, and assigns each read to its single
-best-scoring cluster member via classify_exclusive. Cluster members
-always get the rescue count, even 0, overriding tier1. Non-cluster loci
-keep tier1's count unchanged.
+span (+/- FLANK bp), aligns with minimap2 (--eqx, for CIGAR-based edit
+counting), and assigns each read to its single best-scoring cluster
+member via classify_exclusive. Cluster members always get the rescue
+count, even 0, overriding tier1. Non-cluster loci keep tier1's count
+unchanged.
+
+minimap2-only (no pblat): a cluster's reference set is by construction
+made of near-identical, genomically overlapping sequences, close to
+worst-case input for pblat (one real case ran 265k reads against 20k
+such references and took ~20h45m of pblat alone). Dropping it cost 0.007
+Pearson r against ground truth (human_run1) for a large runtime cut on
+catalogs with many overlapping loci (see no_pblat/README.md).
 
 Usage:
     quant_overlap_rescue.py \\
@@ -35,7 +42,7 @@ from collections import defaultdict
 import pysam
 import pandas as pd
 
-from quant_common import FLANK, read_fasta, run_minimap2_bam, run_pblat, parse_bam_hits, parse_psl_hits, classify_exclusive
+from quant_common import FLANK, read_fasta, run_minimap2_bam, parse_bam_hits, classify_exclusive
 
 
 def parse_args():
@@ -48,7 +55,6 @@ def parse_args():
     p.add_argument('--sample', required=True)
     p.add_argument('--minimap2', default='minimap2')
     p.add_argument('--samtools', default='samtools')
-    p.add_argument('--pblat', default='pblat')
     p.add_argument('--threads', type=int, default=16)
     return p.parse_args()
 
@@ -159,12 +165,10 @@ def main():
     bam_out = run_minimap2_bam(args.minimap2, args.samtools, refs_fa, reads_fa,
                                 workdir / 'cluster_remap.bam', args.threads,
                                 preset_args=("-ax", "map-ont", "--eqx", "-N", "10"))
-    psl_path = run_pblat(args.pblat, refs_fa, reads_fa, workdir / 'cluster_remap.psl', args.threads,
-                          min_score=50, min_identity=90)
 
     join_pos_by_ref = dict(zip(lens_df["safe_id"], lens_df["join_pos"]))
     safe_to_bsj = dict(zip(lens_df["safe_id"], lens_df["bsj_id"]))
-    support = classify_exclusive(parse_bam_hits(bam_out), parse_psl_hits(psl_path), join_pos_by_ref)
+    support = classify_exclusive(parse_bam_hits(bam_out), iter(()), join_pos_by_ref)
 
     cluster_counts = {safe_to_bsj[s]: len(qs) for s, qs in support.items()}
     print(f"[{args.sample}] overlap rescue: {sum(cluster_counts.values())} reads assigned across "

@@ -19,6 +19,7 @@ process BUILD_DESEQ2_MATRIX {
     task.ext.when == null || task.ext.when
 
     script:
+    // cache_bust: blockSizes/blockStarts normalization + near-duplicate structure merge before building isoform_id, 2026-09-07
     def sample_args = [metas, counts_tsvs].transpose().collect { meta, tsv -> "${meta.id}=${tsv}" }.join(' ')
     def group_args  = metas.collect { meta -> "${meta.id}=${meta.group ?: meta.id}" }.join(' ')
     """

@@ -18,6 +18,7 @@ process QUANT_TIERED_RESCUE {
     task.ext.when == null || task.ext.when
 
     script:
+    // cache_bust: dropped pblat from quant_tier2_rescue.py/quant_tier3_rescue.py (minimap2-only), 2026-09-07
     """
     quant_cross_locus_similarity.py \\
         --flagged_loci ${flagged_loci} \\

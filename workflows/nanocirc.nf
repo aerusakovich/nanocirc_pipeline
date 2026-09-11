@@ -11,6 +11,7 @@ include { CIRCRNA_ANALYSIS            } from '../subworkflows/local/circrna_anal
 include { CIRCRNA_QUANTIFY        } from '../subworkflows/local/circrna_quantify'
 include { QUANT_APPEND_COUNTS     } from '../modules/local/quant_append_counts'
 include { CIRCRNA_CROSSRUN_MERGE  } from '../modules/local/circrna_crossrun_merge'
+include { CIRCRNA_CROSSRUN_MERGE as CIRCRNA_CROSS_GROUP_RECONCILE } from '../modules/local/circrna_crossrun_merge'
 include { FILTER_CONFIDENT_DISCOVERY } from '../modules/local/filter_confident_discovery'
 include { CROSSRUN_CONFIDENT_FILTER } from '../modules/local/crossrun_confident_filter'
 include { BUILD_DESEQ2_MATRIX     } from '../modules/local/build_deseq2_matrix'
@@ -47,6 +48,7 @@ workflow NANOCIRC {
     def runCirilong     = Utils.asBool(params.run_cirilong)
     def runCircnick     = Utils.asBool(params.run_circnick)
     def runCrossrunMerge = Utils.asBool(params.run_crossrun_merge)
+    def runCrossGroupReconcile = Utils.asBool(params.run_cross_group_reconcile)
     def runQuantify      = Utils.asBool(params.run_quantify)
 
     // Ensure all FASTQ files are named *.fastq.gz. NanoPlot needs this,
@@ -129,6 +131,9 @@ workflow NANOCIRC {
                 error("--run_crossrun_merge requires a 'group' column in the samplesheet, but sample '${meta.id}' has none.")
             }
     }
+    if (runCrossGroupReconcile && !runCrossrunMerge) {
+        error("--run_cross_group_reconcile requires --run_crossrun_merge.")
+    }
 
     // Optional: splice-motif strand recheck in CIRCRNA_SMART_MERGE needs the
     // FASTA's own .fai alongside it. Not required for the pipeline to run at
@@ -171,9 +176,51 @@ workflow NANOCIRC {
         CIRCRNA_CROSSRUN_MERGE (
             ch_crossrun,
             CIRCRNA_ANALYSIS.out.gene_bed,
-            CIRCRNA_ANALYSIS.out.exon_bed
+            CIRCRNA_ANALYSIS.out.exon_bed,
+            file(params.fasta, checkIfExists: true),
+            ch_fasta_fai
         )
         ch_versions = ch_versions.mix(CIRCRNA_CROSSRUN_MERGE.out.versions.first())
+
+        // Same merge, same process, but every sample from every group goes
+        // in as one unit instead of splitting by meta.group -- one shared
+        // catalog every group quantifies against and publishes clean
+        // outputs from, so a real isoform seen in two groups gets one
+        // isoform_id instead of two independently-decided ones. Fed from
+        // each sample's own per-sample discovery bed/conf, not from
+        // CIRCRNA_CROSSRUN_MERGE's already-filtered per-group output:
+        // corroboration decided per group first and reconciled after loses
+        // real cross-group evidence (verified on benchmark data: 11% fewer
+        // isoforms, 127 fewer ground-truth matches out of 9588, than
+        // reconciling from the raw per-sample catalogs directly).
+        if (runCrossGroupReconcile) {
+            def group_by_tier_all = { bed_ch, conf_ch, tier_name ->
+                bed_ch
+                    .join    ( conf_ch, by: 0 )
+                    .map     { meta, bed, tsv -> tuple(meta.id, bed, tsv) }
+                    .toList()
+                    .map     { entries ->
+                        tuple([id: 'reconciled', sample_ids: entries.collect { it[0] }, tier: tier_name],
+                              entries.collect { it[1] }, entries.collect { it[2] })
+                    }
+            }
+
+            def ch_crossrun_all = group_by_tier_all.call(
+                    CIRCRNA_ANALYSIS.out.discovery_bed,  CIRCRNA_ANALYSIS.out.discovery_conf,  'discovery')
+                .mix(group_by_tier_all.call(
+                    CIRCRNA_ANALYSIS.out.balanced_bed, CIRCRNA_ANALYSIS.out.balanced_conf, 'balanced'))
+                .mix(group_by_tier_all.call(
+                    CIRCRNA_ANALYSIS.out.high_conf_bed,  CIRCRNA_ANALYSIS.out.high_conf_conf,  'high_confidence'))
+
+            CIRCRNA_CROSS_GROUP_RECONCILE (
+                ch_crossrun_all,
+                CIRCRNA_ANALYSIS.out.gene_bed,
+                CIRCRNA_ANALYSIS.out.exon_bed,
+                file(params.fasta, checkIfExists: true),
+                ch_fasta_fai
+            )
+            ch_versions = ch_versions.mix(CIRCRNA_CROSS_GROUP_RECONCILE.out.versions.first())
+        }
     }
 
     //
@@ -188,7 +235,22 @@ workflow NANOCIRC {
         def ch_unit_catalog
         def ch_run_to_unit
 
-        if (runCrossrunMerge) {
+        if (runCrossGroupReconcile) {
+            def ch_group_discovery = CIRCRNA_CROSS_GROUP_RECONCILE.out.bed
+                .filter { m, _bed -> m.tier == 'discovery' }
+                .join   ( CIRCRNA_CROSS_GROUP_RECONCILE.out.confidence.filter { m, _c -> m.tier == 'discovery' }, by: 0 )
+
+            ch_unit_catalog = ch_group_discovery
+                .map { m, bed, conf -> [m.id, bed, conf] }
+
+            def ch_sid_to_unit = ch_group_discovery
+                .flatMap { m, _bed, _conf -> m.sample_ids.collect { sid -> [sid, m.id] } }
+
+            ch_run_to_unit = ch_fastq
+                .map { meta, _fq -> [meta.id, meta] }
+                .join( ch_sid_to_unit, by: 0 )
+                .map { _sid, meta, unit_id -> [meta, unit_id] }
+        } else if (runCrossrunMerge) {
             def ch_group_discovery = CIRCRNA_CROSSRUN_MERGE.out.bed
                 .filter { m, _bed -> m.tier == 'discovery' }
                 .join   ( CIRCRNA_CROSSRUN_MERGE.out.confidence.filter { m, _c -> m.tier == 'discovery' }, by: 0 )
@@ -211,6 +273,23 @@ workflow NANOCIRC {
                 .map { meta, _fq -> [meta, meta.id] }
         }
 
+        // Sample -> its own group's crossrun unit id, always (regardless of
+        // whether run_cross_group_reconcile changes ch_run_to_unit above to
+        // point at the shared reconciled catalog instead): the per-group
+        // confident-filter guard further below still needs each sample's
+        // real group, not the quantification unit it was quantified against.
+        def ch_run_to_group = runCrossrunMerge
+            ? ch_fastq
+                .map { meta, _fq -> [meta.id, meta] }
+                .join(
+                    CIRCRNA_CROSSRUN_MERGE.out.bed
+                        .filter { m, _bed -> m.tier == 'discovery' }
+                        .flatMap { m, _bed -> m.sample_ids.collect { sid -> [sid, m.id] } },
+                    by: 0
+                )
+                .map { _sid, meta, group_id -> [meta, group_id] }
+            : ch_fastq.map { meta, _fq -> [meta, meta.id] }
+
         CIRCRNA_QUANTIFY (
             ch_fastq,
             ch_sample_discovery,
@@ -225,7 +304,12 @@ workflow NANOCIRC {
         ch_versions = ch_versions.mix(CIRCRNA_QUANTIFY.out.versions)
 
         def ch_clean_for_quant
-        if (runCrossrunMerge) {
+        if (runCrossGroupReconcile) {
+            ch_clean_for_quant = ch_run_to_unit
+                .map     { meta, unit_id -> [unit_id, meta] }
+                .combine ( CIRCRNA_CROSS_GROUP_RECONCILE.out.clean.map { m, tsv -> [m.id, m.tier, tsv] }, by: 0 )
+                .map     { _unit_id, meta, tier, tsv -> [meta + [category: tier], tsv] }
+        } else if (runCrossrunMerge) {
             ch_clean_for_quant = ch_run_to_unit
                 .map     { meta, unit_id -> [unit_id, meta] }
                 .combine ( CIRCRNA_CROSSRUN_MERGE.out.clean.map { m, tsv -> [m.id, m.tier, tsv] }, by: 0 )
@@ -245,7 +329,12 @@ workflow NANOCIRC {
         ch_versions = ch_versions.mix(QUANT_APPEND_COUNTS.out.versions.first())
 
         def ch_bed_for_quant
-        if (runCrossrunMerge) {
+        if (runCrossGroupReconcile) {
+            ch_bed_for_quant = ch_run_to_unit
+                .map     { meta, unit_id -> [unit_id, meta] }
+                .combine ( CIRCRNA_CROSS_GROUP_RECONCILE.out.bed.map { m, bed -> [m.id, m.tier, bed] }, by: 0 )
+                .map     { _unit_id, meta, tier, bed -> [meta + [category: tier], bed] }
+        } else if (runCrossrunMerge) {
             ch_bed_for_quant = ch_run_to_unit
                 .map     { meta, unit_id -> [unit_id, meta] }
                 .combine ( CIRCRNA_CROSSRUN_MERGE.out.bed.map { m, bed -> [m.id, m.tier, bed] }, by: 0 )
@@ -306,8 +395,8 @@ workflow NANOCIRC {
         if (runCrossrunMerge) {
             def ch_run_filtered_by_group_tier = ch_final_clean_with_counts
                 .map { meta, tsv -> [meta.id, meta.category, tsv] }
-                .combine( ch_run_to_unit.map { meta, unit_id -> [meta.id, unit_id] }, by: 0 )
-                .map { _run_id, category, tsv, unit_id -> [[unit_id, category], tsv] }
+                .combine( ch_run_to_group.map { meta, group_id -> [meta.id, group_id] }, by: 0 )
+                .map { _run_id, category, tsv, group_id -> [[group_id, category], tsv] }
                 .groupTuple(by: 0)
 
             def ch_crossrun_confident_input = CIRCRNA_CROSSRUN_MERGE.out.clean

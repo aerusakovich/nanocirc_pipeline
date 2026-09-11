@@ -116,6 +116,25 @@ def print_error(msg):
 
 # ── I/O ────────────────────────────────────────────────────────────────────────
 
+def normalize_block_field(field: str) -> str:
+    """Canonical comma-terminated form ('486,', not '486'): tools disagree
+    on whether a single-block blockSizes/blockStarts value ends with a
+    trailing comma (isocirc/circFL omit it, our own CIRILONG_TO_BED12/
+    CIRCNICK_TO_BED12 conversions include it). smart_merge's own numeric
+    comparisons (absolute_exon_coords, struct_key via int-parsing) already
+    tolerate either form, but it copies the winning tool's raw string
+    into its OWN output verbatim -- so which format survives depends on
+    which tool wins the structure vote, which can differ sample to sample
+    for the same real locus. Downstream code that joins across samples on
+    that exact string (an isoform-level count matrix, for one) then sees
+    the same physical isoform as two different ones, on real data
+    manufacturing a spurious 'isoform switch' between a call and itself.
+    Normalizing here, at ingestion, means every record from every tool is
+    on one canonical string from the start."""
+    field = field.rstrip(',')
+    return f'{field},' if field else field
+
+
 def read_bed12(path, tool_name):
     """Read BED12 and return list of record dicts."""
     records = []
@@ -140,8 +159,8 @@ def read_bed12(path, tool_name):
                 'thick_end':    cols[7],
                 'rgb':          cols[8],
                 'block_count':  cols[9],
-                'block_sizes':  cols[10],
-                'block_starts': cols[11],
+                'block_sizes':  normalize_block_field(cols[10]),
+                'block_starts': normalize_block_field(cols[11]),
                 'tool':         tool_name,
             })
     return records
@@ -434,11 +453,27 @@ def absolute_exon_coords(rec):
 
 
 def abs_struct_similar(a, b, tolerance):
-    """Two structures are similar if they have the same number of exons,
-    each exon start is within tolerance bp, and each exon size is equal."""
+    """Two structures are similar if they have the same number of exons and
+    each exon's start AND end are independently within tolerance bp.
+
+    Originally required each exon's SIZE to be exactly equal (only the
+    start could drift by tolerance), which misses the single most common
+    real boundary-calling artifact: a splice site called a few bp
+    differently trades start against size while leaving the exon's
+    genomic END untouched (blockSizes 42,196,... vs 42,198,... with
+    blockStarts 0,1606,... vs 0,1604,... is start 1606 vs 1604 [2bp] but
+    an IDENTICAL end at +1802 both times -- same physical junction, exact
+    size match rejected it outright regardless of tolerance). Checking
+    both ends independently instead of requiring exact size catches that
+    case while still refusing a real structural difference (an exon
+    genuinely gained or lost length beyond tolerance on both sides).
+    Validated on real benchmark ground truth (human_run1): exact-match
+    isoform recall unchanged (20/141 true_iso hits before and after),
+    discovery catalog isoform count -0.5% (pure boundary-noise removal,
+    none of it a ground-truth hit)."""
     if len(a) != len(b):
         return False
-    return all(abs(ea[0] - eb[0]) <= tolerance and ea[1] == eb[1]
+    return all(abs(ea[0] - eb[0]) <= tolerance and abs((ea[0] + ea[1]) - (eb[0] + eb[1])) <= tolerance
                for ea, eb in zip(a, b))
 
 
@@ -491,7 +526,7 @@ def rebase_struct(rec, new_start, new_end):
     new_rec    = dict(rec)
     new_rec['start']        = new_start
     new_rec['end']          = new_end
-    new_rec['block_starts'] = ','.join(str(s) for s in new_starts)
+    new_rec['block_starts'] = normalize_block_field(','.join(str(s) for s in new_starts))
     return new_rec
 
 
@@ -812,7 +847,14 @@ def collect_entries_consensus_hybrid(tool_best, struct_tolerance):
 # per locus instead of collapsing to best_record() before the vote.
 # CircNick-LRS is excluded: near-zero true-isoform recovery even under a
 # loose overlap threshold, so a second call is likelier wrong than real.
-MULTI_ISO_TOOLS = {'isocirc', 'circfl', 'cirilong'}
+# A tuple in STRUCT_PRIORITY order, not a set: iterated below to assign
+# iso{N} labels when >1 tool has its own distinct extra call at the same
+# BSJ, and a plain set's iteration order is randomized per Python process
+# (PYTHONHASHSEED), which silently made which tool's call became iso1 vs
+# iso2 nondeterministic across separate runs on identical input (verified
+# directly: back-to-back invocations on the same real BSJ locus swapped
+# which of isocirc's/circfl's own extra structure got labeled iso1).
+MULTI_ISO_TOOLS = tuple(t for t in STRUCT_PRIORITY if t in ('isocirc', 'circfl', 'cirilong'))
 
 
 def collect_entries_consensus_hybrid_multi_iso(tool_map, struct_tolerance):
@@ -1150,16 +1192,23 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
     computed_modes = {'consensus', 'consensus_xstruct', 'consensus_hybrid', 'priority'} \
         if run_legacy_modes else {'consensus_hybrid'}
 
-    # (chrom, start, end, strand) keys already emitted, per mode. group_relaxed
-    # guarantees two DIFFERENT groups never share a real strand at the same
-    # coordinates, but the per-entry motif-based strand flip below runs after
-    # that grouping decision and knows nothing about other groups: two
-    # separate conflicting-strand groups (kept apart on purpose) can each
+    # (chrom, start, end, strand) keys already emitted, per mode, mapped to
+    # the group_key that claimed them. group_relaxed guarantees two DIFFERENT
+    # groups never share a real strand at the same coordinates, but the
+    # per-entry motif-based strand flip below runs after that grouping
+    # decision and knows nothing about other groups: two separate
+    # conflicting-strand groups (kept apart on purpose) can each
     # independently flip toward the SAME true strand, producing a duplicate
     # bsj_id that breaks every downstream script's assumption that bsj_id is
-    # unique. Refuse a flip that would create that collision; downgrade to
-    # ambiguous ('.') instead, which never collides with the other side.
-    claimed_keys_by_mode = defaultdict(set)
+    # unique. Refuse a flip that would create THAT collision (different
+    # group_key already owns the key); downgrade to ambiguous ('.') instead,
+    # which never collides with the other side. Recording the owning
+    # group_key (not just a bare seen-it set) matters: every isoform in one
+    # group's own multi-isoform family (main/iso1/iso2/...) shares that
+    # group's own (chrom, start, end) and, correctly, usually the same
+    # resolved strand too -- that repeat is expected, not a conflict, and
+    # must not itself trigger the ambiguous downgrade.
+    claimed_keys_by_mode = defaultdict(dict)
 
     for group_key, tool_map in sorted(groups.items()):
         chrom, _, _, strand = group_key
@@ -1208,34 +1257,36 @@ def write_outputs(groups, active_tools, sample, outdir, struct_tolerance, cross_
 
                 claimed = claimed_keys_by_mode[mode]
                 key = (chrom, start, end, resolved_strand)
-                if key in claimed:
+                owner = claimed.get(key)
+                conflict = owner is not None and owner != group_key
+                if conflict:
                     resolved_strand, strand_status = '.', 'ambiguous'
                     key = (chrom, start, end, resolved_strand)
+                    owner = claimed.get(key)
+                    conflict = owner is not None and owner != group_key
 
                 suffix = label if label != 'main' else None
-                if key in claimed:
-                    # Even '.' collides: most often this is a same-BSJ
-                    # multi-isoform entry (isoform_label already iso1/iso2/...)
-                    # whose own independent motif check happened to land on
-                    # the same resolved strand as an earlier isoform at this
-                    # same BSJ -- keep its real iso{N} suffix in that case,
-                    # since (coords, strand, label) itself is still free. Only
-                    # fall back to a generic dup{N} counter when even that
-                    # collides too: two separate groups both landing on the
-                    # same coords, strand, AND label (real case, not just
+                if conflict:
+                    # Even '.' collides with a DIFFERENT group: most often
+                    # this is two separate groups' entries both landing on
+                    # the same coords/strand after independent motif
+                    # resolution -- keep this entry's real iso{N} suffix in
+                    # that case, since (coords, strand, label) itself is
+                    # still free. Only fall back to a generic dup{N} counter
+                    # when even that collides too (real case, not just
                     # theoretical -- hit on mouse species benchmark data).
                     # Uniqueness, which every downstream quant script assumes,
                     # holds either way.
                     label_key = key + (suffix,)
                     if suffix is not None and label_key not in claimed:
-                        claimed.add(label_key)
+                        claimed[label_key] = group_key
                     else:
                         dup_n = 2
                         while key + (f'dup{dup_n}',) in claimed:
                             dup_n += 1
                         suffix = f'dup{dup_n}'
-                        claimed.add(key + (suffix,))
-                claimed.add(key)
+                        claimed[key + (suffix,)] = group_key
+                claimed[key] = group_key
 
                 bsj_id = make_bsj_id(chrom, start, end, resolved_strand, suffix=suffix)
 

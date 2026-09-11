@@ -29,6 +29,8 @@ process CIRCRNA_SMART_MERGE {
 
     script:
     // cache_bust: smart_merge.py motif-informed pre-grouping + iso{N} label preservation on collision, 2026-08-24
+    // cache_bust: smart_merge.py blockSizes/blockStarts trailing-comma normalization + abs_struct_similar exon-end tolerance fix, 2026-09-07
+    // cache_bust: smart_merge.py write_outputs() strand-collision-key fix (group-scoped, no longer wipes same-BSJ multi-isoform confirmed strands) + MULTI_ISO_TOOLS set->tuple determinism fix, 2026-09-08
     def names_arg = tool_names.join(' ')
     def files_arg = bed_files.collect { f -> f.toString() }.join(' ')
     // pair_files is empty for a single-tool run (n_active=1, no pairs possible);

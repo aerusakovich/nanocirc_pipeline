@@ -10,6 +10,8 @@ process CIRCRNA_CROSSRUN_MERGE {
     tuple val(meta), path(bed_files), path(conf_tsvs)
     path gene_bed
     path exon_bed
+    path fasta
+    path fasta_fai
 
     output:
     tuple val(meta), path("${prefix}.bed12"),            emit: bed
@@ -19,6 +21,9 @@ process CIRCRNA_CROSSRUN_MERGE {
 
     script:
     // cache_bust: smart_merge.py motif-informed pre-grouping + iso{N} label preservation on collision, 2026-08-24
+    // cache_bust: smart_merge.py blockSizes/blockStarts trailing-comma normalization + abs_struct_similar exon-end tolerance fix, 2026-09-07
+    // cache_bust: smart_merge.py write_outputs() strand-collision-key fix (group-scoped, no longer wipes same-BSJ multi-isoform confirmed strands) + MULTI_ISO_TOOLS set->tuple determinism fix, 2026-09-08
+    // cache_bust: wired --fasta into the cross-run merge call so the splice-motif strand recheck (already available in CIRCRNA_SMART_MERGE) also runs here, instead of every cross-run '.' strand call passing through as strand_status=not_checked unconditionally, 2026-09-09
     def sample_names = meta.sample_ids.join(' ')
     def n            = meta.sample_ids.size()
     def raw_prefix   = "${meta.id}_${meta.tier}_crossrun"
@@ -31,6 +36,10 @@ process CIRCRNA_CROSSRUN_MERGE {
                      : meta.tier == 'discovery' ? 1
                      : Math.max(2, Math.ceil(0.25 * n).toInteger())
     def min_corroboration = n < 2 ? 1 : params.crossrun_min_tool_agreement
+    // fasta_fai is a NO_FILE_FASTA_FAI placeholder when the reference FASTA
+    // has no .fai next to it; skip the splice-motif strand recheck entirely
+    // in that case rather than fail the whole run over an optional check.
+    def fastaFlag = fasta_fai.name != 'NO_FILE_FASTA_FAI' ? "--fasta ${fasta}" : ''
     """
     # Only consensus_hybrid is computed here (see write_outputs()).
     # --conf_tsvs: cross-run mode, see cross_run_hybrid_entries().
@@ -44,6 +53,7 @@ process CIRCRNA_CROSSRUN_MERGE {
         --struct_tolerance ${params.circrna_bsj_tolerance} \\
         --n_active      ${n} \\
         --min_corroboration ${min_corroboration} \\
+        ${fastaFlag} \\
         --outdir        .
 
     # ── Pairwise bedtools intersect ────────────────────────────────────────────

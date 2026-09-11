@@ -33,12 +33,17 @@ is one in-memory groupby at the end, no extra alignment passes needed.
 quant_overlap_rescue.py (tier1.5) and quant_tier3_rescue.py (gene family)
 add further, independent checks on top of this fix.
 
+minimap2-only (no pblat): dropping the per-chunk pblat call cost 0.007
+Pearson r against ground truth (0.957 -> 0.950, human_run1) while cutting
+this stage's wall time up to ~30x on catalogs with many overlapping loci
+(see no_pblat/README.md for the full comparison).
+
 Usage:
     quant_chunk_remap.py \\
         --chunks_dir  chunks/ \\
         --genome_bam  sample1.genome_align.sorted.bam \\
         --sample      sample1 \\
-        --minimap2 minimap2 --samtools samtools --pblat pblat \\
+        --minimap2 minimap2 --samtools samtools \\
         --threads 4
 """
 import argparse
@@ -48,10 +53,7 @@ from collections import defaultdict
 import pysam
 import pandas as pd
 
-from quant_common import (
-    FLANK, score_chunk_bam, score_chunk_psl,
-    run_minimap2_bam, run_pblat, parse_bam_hits, parse_psl_hits,
-)
+from quant_common import FLANK, score_chunk_bam, run_minimap2_bam, parse_bam_hits
 
 
 def parse_args():
@@ -61,7 +63,6 @@ def parse_args():
     p.add_argument('--sample', required=True)
     p.add_argument('--minimap2', default='minimap2')
     p.add_argument('--samtools', default='samtools')
-    p.add_argument('--pblat', default='pblat')
     p.add_argument('--threads', type=int, default=4)
     return p.parse_args()
 
@@ -93,7 +94,7 @@ def fetch_chunk_candidate_reads(bam_path, chunk_lengths_full: pd.DataFrame, flan
 
 
 def run_chunk(chunk_idx: int, chunks_dir: Path, genome_bam: Path, workdir: Path, out_dir: Path,
-              minimap2_bin, samtools_bin, pblat_bin, threads=4) -> dict:
+              minimap2_bin, samtools_bin, threads=4) -> dict:
     """Returns {(read_id, bsj_id): score} for every (read, locus) pair that
     qualifies in this chunk. A locus belongs to exactly one chunk (chunks
     partition the catalog), so a given (read_id, bsj_id) pair can only ever
@@ -122,26 +123,13 @@ def run_chunk(chunk_idx: int, chunks_dir: Path, genome_bam: Path, workdir: Path,
                                 workdir / f"{tag}.minimap2.bam", threads)
     mm2_scores = score_chunk_bam(parse_bam_hits(bam_out), join_pos_by_ref)
 
-    psl_path = run_pblat(pblat_bin, chunk_fa, reads_fa, workdir / f"{tag}.psl", threads,
-                          min_score=50, min_identity=90)
-    psl_scores = score_chunk_psl(parse_psl_hits(psl_path), join_pos_by_ref)
-
-    # A pair qualifying under both hit types keeps its best (larger) score.
-    combined = dict(mm2_scores)
-    for key, score in psl_scores.items():
-        if key not in combined or score > combined[key]:
-            combined[key] = score
-
-    chunk_scores = {(qname, safe_to_bsj[rname]): score for (qname, rname), score in combined.items()}
+    chunk_scores = {(qname, safe_to_bsj[rname]): score for (qname, rname), score in mm2_scores.items()}
 
     mm2_per_ref = defaultdict(set)
-    total_per_ref = defaultdict(set)
     for qname, rname in mm2_scores:
         mm2_per_ref[rname].add(qname)
-    for qname, rname in combined:
-        total_per_ref[rname].add(qname)
     stats_rows = [{"bsj_id": safe_to_bsj[ref], "mm2_count": len(mm2_per_ref.get(ref, set())),
-                   "total_count": len(total_per_ref.get(ref, set()))} for ref in join_pos_by_ref]
+                   "total_count": len(mm2_per_ref.get(ref, set()))} for ref in join_pos_by_ref]
     pd.DataFrame(stats_rows).to_csv(stats_out, sep="\t", index=False)
 
     return chunk_scores
@@ -178,7 +166,7 @@ def main():
     all_scores = {}
     for chunk_idx in range(n_chunks):
         chunk_scores = run_chunk(chunk_idx, chunks_dir, Path(args.genome_bam), workdir, out_dir,
-                                  args.minimap2, args.samtools, args.pblat, args.threads)
+                                  args.minimap2, args.samtools, args.threads)
         all_scores.update(chunk_scores)
 
     out_df = resolve_global(all_scores)
